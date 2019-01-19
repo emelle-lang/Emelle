@@ -91,7 +91,8 @@ let handle_proc proc =
   let map = Map.empty (module Int) in
   handle_block live_regs map proc proc.Ssa.entry
   >>| fun (blocks, _) ->
-  { Post_ssa.params = proc.Ssa.params
+  { Post_ssa.free_vars = proc.Ssa.free_vars
+  ; params = proc.Ssa.params
   ; entry = proc.Ssa.entry
   ; blocks = blocks
   ; before_return = proc.Ssa.before_return }

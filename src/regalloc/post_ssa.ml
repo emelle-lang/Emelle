@@ -14,6 +14,7 @@ type basic_block = {
   }
 
 type proc = {
+    free_vars : Anf.register list;
     params : Anf.register list;
     entry : Ssa.Label.t;
     blocks : (int, basic_block, Int.comparator_witness) Map.t;

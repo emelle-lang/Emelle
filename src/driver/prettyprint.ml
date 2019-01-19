@@ -133,9 +133,6 @@ module Ssa = struct
   let print_operand pp = function
     | Anf.Extern_var path ->
        print_qual_id pp path
-    | Anf.Free_var idx ->
-       Buffer.add_string pp.buffer "e%";
-       Buffer.add_string pp.buffer (Int.to_string idx)
     | Anf.Lit lit ->
        print_lit pp lit
     | Anf.Register id ->
@@ -249,7 +246,10 @@ module Ssa = struct
       ) instrs;
     print_jump pp jump
 
-  let print_proc pp Ssa.{ params; blocks; before_return; _ } =
+  let print_proc pp Ssa.{ free_vars; params; blocks; before_return; _ } =
+    Buffer.add_char pp.buffer '[';
+    print_comma_sep print_reg pp free_vars;
+    Buffer.add_char pp.buffer ']';
     Buffer.add_char pp.buffer '(';
     print_comma_sep print_reg pp params;
     Buffer.add_char pp.buffer ')';

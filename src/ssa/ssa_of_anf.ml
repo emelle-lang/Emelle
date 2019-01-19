@@ -144,7 +144,7 @@ let rec compile_opcode ctx anf ~cont
            , jump )
          ) in result
   | Anf.Fun proc ->
-     let env = proc.Anf.env in
+     let env = List.map ~f:(fun (_, op) -> op) proc.Anf.env in
      let%bind proc = compile_proc ctx proc in
      let idx = !(ctx.proc_gen) in
      ctx.proc_gen := idx + 1;
@@ -219,7 +219,8 @@ and compile_proc ctx proc =
     { Ssa.preds = Set.empty (module Ssa.Label)
     ; instrs
     ; jump } in
-  { Ssa.params = proc.Anf.params
+  { Ssa.free_vars = List.map ~f:(fun (reg, _) -> reg) proc.Anf.env
+  ; params = proc.Anf.params
   ; blocks = Map.set !blocks ~key:0 ~data:entry_block
   ; entry = 0
   ; before_return }
@@ -240,7 +241,8 @@ let compile_package anf =
     ; instrs = ctx.instrs
     ; jump } in
   let main_proc =
-    { Ssa.params = []
+    { Ssa.free_vars = []
+    ; params = []
     ; blocks = Map.set !(ctx.blocks) ~key:0 ~data:entry_block
     ; entry = 0
     ; before_return } in

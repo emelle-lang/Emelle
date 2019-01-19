@@ -5,9 +5,9 @@
 open Base
 
 type t = {
-    ctx : (Ident.t, Anf.operand) Hashtbl.t;
+    ctx : (Ident.t, Anf.register) Hashtbl.t;
     (** Map from ids to variables *)
-    free_vars : Anf.operand Queue.t; (** Free variables *)
+    free_vars : (Anf.register * Anf.operand) Queue.t; (** Free variables *)
     pat_ctx : Pattern.context;
     parent : t option;
     reg_gen : Anf.register ref;
@@ -36,10 +36,10 @@ let rec free_var self id =
       match self.parent with
       | Some parent ->
          free_var parent id >>= fun var ->
-         let operand = Anf.Free_var (Queue.length self.free_vars) in
-         let _ = Hashtbl.add self.ctx ~key:id ~data:operand in
-         Queue.enqueue self.free_vars var;
-         Ok operand
+         let reg = fresh_register self in
+         let _ = Hashtbl.add self.ctx ~key:id ~data:reg in
+         Queue.enqueue self.free_vars (reg, Anf.Register var);
+         Ok reg
       | None ->
          Error (Sequence.return (Message.Unreachable "Lower free_var"))
     )
@@ -56,7 +56,7 @@ let make_break self ann instr =
 (** Combine statically known nested unary functions into multi-argument procs *)
 let rec proc_of_lambda self params id body ~cont =
   let reg = fresh_register self in
-  match Hashtbl.add self.ctx ~key:id ~data:(Register reg) with
+  match Hashtbl.add self.ctx ~key:id ~data:reg with
   | `Duplicate ->
      Error (Sequence.return (Message.Unreachable "Lower uncurry"))
   | `Ok ->
@@ -88,29 +88,23 @@ and flatten_app self count args f x ~cont =
               closure *)
            let rec gen_ascending_ints list = function
              | 0 -> list
-             | n -> gen_ascending_ints ((n - 1)::list) (n - 1)
-           in
-           let rec gen_descending_free_vars n list = function
-             | [] -> list
-             | _::xs ->
-                gen_descending_free_vars (n + 1) ((Anf.Free_var n)::list) xs
-           in
+             | n -> gen_ascending_ints ((n - 1)::list) (n - 1) in
+           let env = List.map ~f:(fun op -> (fresh_register self, op)) args in
            (* Closure parameters *)
            let params = gen_ascending_ints [] (fields - count) in
            (* Operand list of the parameters *)
            let regs_of_params =
-             List.map ~f:(fun reg -> Anf.Register reg) params
-           in
+             List.map ~f:(fun reg -> Anf.Register reg) params in
            (* The already known arguments, accessed from within the closure and
               backwards *)
-           let free_vars_rev = gen_descending_free_vars 0 [] args in
+           let free_var_regs =
+             List.map ~f:(fun (reg, _) -> Anf.Register reg) env in
            (* The final operands of the box opcode *)
            let box_contents =
              (Anf.Lit (Literal.Int tag))::
-               (List.rev_append free_vars_rev regs_of_params)
-           in
+               (List.append free_var_regs regs_of_params) in
            let proc =
-             { Anf.env = args
+             { Anf.env
              ; params
              ; body = make_break self f.Lambda.ann (Anf.Box box_contents) }
            in Anf.Fun proc
@@ -144,7 +138,7 @@ and compile_branch self bindings =
   Set.fold_right ~f:(fun id acc ->
       acc >>= fun params ->
       let param = fresh_register self in
-      match Hashtbl.add self.ctx ~key:id ~data:(Register param) with
+      match Hashtbl.add self.ctx ~key:id ~data:param with
       | `Duplicate ->
          Error (Sequence.return
                   (Message.Unreachable "Lower compile_branch"))
@@ -189,7 +183,7 @@ and instr_of_lambdacode self ({ Lambda.ann; expr; _ } as lambda) ~cont =
   | Lambda.Let(lhs, rhs, body) ->
      instr_of_lambdacode self rhs ~cont:(fun rhs ->
          let var = fresh_register self in
-         match Hashtbl.add self.ctx ~key:lhs ~data:(Register var) with
+         match Hashtbl.add self.ctx ~key:lhs ~data:var with
          | `Duplicate -> Message.unreachable "Lower instr_of_lambdacode"
          | `Ok ->
             instr_of_lambdacode self body ~cont >>| fun body ->
@@ -220,7 +214,7 @@ and compile_letrec self bindings ~cont =
       acc >>= fun list ->
       let var = fresh_register self in
       let temp_var = fresh_register self in
-      match Hashtbl.add self.ctx ~key:lhs ~data:(Anf.Register var) with
+      match Hashtbl.add self.ctx ~key:lhs ~data:var with
       | `Duplicate ->
          Error (Sequence.return (Message.Unreachable "Bytecode comp letrec"))
       | `Ok -> Ok ((var, temp_var, rhs)::list)
@@ -257,8 +251,8 @@ and operand_of_lambdacode self lambda ~cont =
      { Anf.ann = lambda.Lambda.ann; instr = Anf.Let(var, Anf.Fun proc, body) }
   | Lambda.Extern_var id -> cont (Anf.Extern_var id)
   | Lambda.Lit lit -> cont (Anf.Lit lit)
-  | Lambda.Local_var reg ->
-     free_var self reg >>= fun var -> cont var
+  | Lambda.Local_var id ->
+     free_var self id >>= fun reg -> cont (Anf.Register reg)
   | _ ->
      instr_of_lambdacode self lambda ~cont:(fun rhs ->
          let var = fresh_register self in

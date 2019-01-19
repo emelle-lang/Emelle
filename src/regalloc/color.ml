@@ -102,7 +102,8 @@ let handle_proc proc =
     ; free_colors = Set.empty (module Int)
     ; live_regs = Hashtbl.create (module Int)
     ; visited_blocks = Hashtbl.create (module Int) } in
-  (* Perform register allocation on parameters first *)
+  (* Perform register allocation on free variables and parameters first *)
+  List.iter proc.Post_ssa.free_vars ~f:(fun reg -> alloc_reg ctx reg);
   List.iter proc.Post_ssa.params ~f:(fun reg -> alloc_reg ctx reg);
   (* Perform register allocation on entry block; blocks that are unreachable
      will not be visited. *)

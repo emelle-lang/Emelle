@@ -4,7 +4,6 @@ type register = int
 
 type operand =
   | Extern_var of Path.t
-  | Free_var of int (** In the proc's environment *)
   | Lit of Literal.t
   | Register of int
 
@@ -50,7 +49,7 @@ and 'a instr = {
   }
 
 and 'a proc = {
-    env : operand list; (** The captured variables *)
+    env : (register * operand) list; (** The captured variables *)
     params : register list;
     body : 'a instr;
   }

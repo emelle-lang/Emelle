@@ -19,15 +19,15 @@ let export self env type_env Ast.{ ann; exports; _ } =
       match Env.find env name with
       | None ->
          Error (Sequence.return (Message.Unresolved_path (Ast.Internal name)))
-      | Some reg ->
-         match Hashtbl.find type_env reg with
+      | Some id ->
+         match Hashtbl.find type_env id with
          | None -> Message.unreachable "Pipeline export 1"
          | Some ty ->
-            match Hashtbl.find self.lowerer.Lower.ctx reg with
+            match Hashtbl.find self.lowerer.Lower.ctx id with
             | None -> Message.unreachable "Pipeline export 2"
-            | Some operand ->
+            | Some reg ->
                match Package.add_val self.package name ty i with
-               | Some () -> Ok (i + 1, operand::list)
+               | Some () -> Ok (i + 1, (Anf.Register reg)::list)
                | None -> Error (Sequence.return (Message.Reexported_name name))
     ) ~init:(Ok (0, [])) exports
   >>| fun (_, operands) ->
