@@ -230,6 +230,11 @@ and compile_letrec self bindings ~cont =
 and operand_of_lambdacode self lambda ~cont =
   let open Result.Monad_infix in
   match lambda.Lambda.expr with
+  | Lambda.Constr(tag, 0) ->
+     let var = fresh_register self in
+     cont (Ir.Operand.Register var) >>| fun body ->
+     { Anf.ann = lambda.Lambda.ann
+     ; instr = Anf.Let(var, Anf.Box [Ir.Operand.Lit (Literal.Int tag)], body) }
   | Lambda.Constr(tag, size) ->
      let params = Ir.Register.gen_regs [] size in
      let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
