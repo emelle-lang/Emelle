@@ -1,21 +1,12 @@
 open Base
 
-module Label = struct
-  module T = struct
-    type t = int
-    [@@deriving compare, hash, sexp]
-  end
-  include T
-  include Comparator.Make(T)
-end
-
 type operand = Anf.operand
 
 type jump =
-  | Break of Label.t * operand list (** Break to a basic block *)
+  | Break of Ir.Label.t * operand list (** Break to a basic block *)
   | Fail (** Pattern match failure *)
   | Return of operand
-  | Switch of operand * (int * Label.t) list * Label.t
+  | Switch of operand * (int * Ir.Label.t) list * Ir.Label.t
       (** The jump is dynamic *)
 
 type opcode =
@@ -33,12 +24,12 @@ type opcode =
   | Ref of operand
 
 type instr = {
-    dest : int;
+    dest : Ir.Register.t;
     opcode : opcode;
   }
 
 type basic_block = {
-    mutable preds : (Label.t, Label.comparator_witness) Set.t;
+    mutable preds : (Ir.Label.t, Ir.Label.comparator_witness) Set.t;
     instrs : instr Queue.t;
     jump : jump;
   }
@@ -46,9 +37,9 @@ type basic_block = {
 type proc = {
     free_vars : Anf.register list;
     params : Anf.register list;
-    entry : Label.t;
-    blocks : (Label.t, basic_block, Label.comparator_witness) Map.t;
-    before_return : Label.t;
+    entry : Ir.Label.t;
+    blocks : (Ir.Label.t, basic_block, Ir.Label.comparator_witness) Map.t;
+    before_return : Ir.Label.t;
   }
 
 type package = {

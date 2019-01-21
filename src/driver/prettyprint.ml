@@ -128,19 +128,19 @@ let rec print_comma_sep f pp = function
 module Ssa = struct
   let print_reg pp reg =
     Buffer.add_string pp.buffer "r%";
-    Buffer.add_string pp.buffer (Int.to_string reg)
+    Buffer.add_string pp.buffer (Ir.Register.to_string reg)
 
   let print_operand pp = function
-    | Anf.Extern_var path ->
+    | Ir.Operand.Extern_var path ->
        print_qual_id pp path
-    | Anf.Lit lit ->
+    | Ir.Operand.Lit lit ->
        print_lit pp lit
-    | Anf.Register id ->
+    | Ir.Operand.Register id ->
        print_reg pp id
 
   let print_label pp label =
     Buffer.add_char pp.buffer 'L';
-    Buffer.add_string pp.buffer (Int.to_string label)
+    Buffer.add_string pp.buffer (Ir.Label.to_string label)
 
   let print_jump pp = function
     | Ssa.Break(label, args) ->

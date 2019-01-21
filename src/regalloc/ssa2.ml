@@ -1,24 +1,24 @@
 open Base
 
 type instr = {
-    dest : int;
+    dest : Ir.Register.t;
     opcode : Ssa.opcode;
-    ending_regs : (int, Int.comparator_witness) Set.t;
+    ending_regs : (Ir.Register.t, Ir.Register.comparator_witness) Set.t;
   }
 
 type basic_block = {
-    preds : (Ssa.Label.t, Ssa.Label.comparator_witness) Set.t;
+    preds : (Ir.Label.t, Ir.Label.comparator_witness) Set.t;
     instrs : instr list;
     jump : Ssa.jump;
-    ending_at_jump : (int, Int.comparator_witness) Set.t;
+    ending_at_jump : (Ir.Register.t, Ir.Register.comparator_witness) Set.t;
   }
 
 type proc = {
-    free_vars : Anf.register list;
-    params : Anf.register list;
-    entry : Ssa.Label.t;
-    blocks : (int, basic_block, Int.comparator_witness) Map.t;
-    before_return : Ssa.Label.t;
+    free_vars : Ir.Register.t list;
+    params : Ir.Register.t list;
+    entry : Ir.Label.t;
+    blocks : (Ir.Label.t, basic_block, Ir.Label.comparator_witness) Map.t;
+    before_return : Ir.Label.t;
   }
 
 type package = {

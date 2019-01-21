@@ -24,18 +24,18 @@ let regs_of_opcode opcode =
   let operands = operands_of_opcode opcode in
   List.fold operands ~init:[] ~f:(fun acc ->
       function
-      | Anf.Register reg -> reg::acc
+      | Ir.Operand.Register reg -> reg::acc
       | _ -> acc
     )
 
 let regs_of_jump jump =
   let open List.Monad_infix in
   operands_of_jump jump >>= function
-  | Anf.Register reg -> [reg]
+  | Ir.Operand.Register reg -> [reg]
   | _ -> []
 
 let handle_regs live_regs regs =
-  let regs = Set.of_list (module Int) regs in
+  let regs = Set.of_list (module Ir.Register) regs in
   let new_regs = Set.diff regs live_regs in
   (Set.union live_regs regs, new_regs)
 
@@ -64,13 +64,14 @@ let rec handle_block live_regs blocks proc label =
   let open Result.Monad_infix in
   match find_block proc label with
   | Some block ->
-     let succs = Set.of_list (module Int) (Ssa.successors block.Ssa.jump) in
+     let succs =
+       Set.of_list (module Ir.Label) (Ssa.successors block.Ssa.jump) in
      Set.fold succs ~init:(Ok (blocks, live_regs)) ~f:(fun acc label ->
          acc >>= fun (blocks, live_regs) ->
          handle_block live_regs blocks proc label
        ) >>| fun (blocks, live_regs) ->
      let live_at_jump =
-       Set.of_list (module Int) (regs_of_jump block.Ssa.jump) in
+       Set.of_list (module Ir.Register) (regs_of_jump block.Ssa.jump) in
      let ending_at_jump = Set.diff live_at_jump live_regs in
      let live_regs = Set.union live_regs ending_at_jump in
      let instrs, live_regs = handle_instrs live_regs block.Ssa.instrs in
@@ -84,8 +85,8 @@ let rec handle_block live_regs blocks proc label =
 
 let handle_proc proc =
   let open Result.Monad_infix in
-  let live_regs = Set.empty (module Int) in
-  let map = Map.empty (module Int) in
+  let live_regs = Set.empty (module Ir.Register) in
+  let map = Map.empty (module Ir.Label) in
   handle_block live_regs map proc proc.Ssa.entry
   >>| fun (blocks, _) ->
   { Ssa2.free_vars = proc.Ssa.free_vars

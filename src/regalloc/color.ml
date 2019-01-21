@@ -2,16 +2,18 @@ open Base
 
 type ctx = {
     mutable color_gen : int; (** The color to use if there are no free colors *)
-    coloring : (int, int) Hashtbl.t; (** Map from registers to colors *)
+    coloring : (Ir.Register.t, int) Hashtbl.t;
+      (** Map from registers to colors *)
     mutable free_colors : (int, Int.comparator_witness) Set.t;
       (** The colors that may be reused *)
-    live_regs : (int, int) Hashtbl.t;
-    visited_blocks : (Ssa.Label.t, ctx) Hashtbl.t;
+    live_regs : (Ir.Register.t, int) Hashtbl.t;
+    visited_blocks : (Ir.Label.t, ctx) Hashtbl.t;
   }
 
 type t = {
-    colorings : (int, (int, int) Hashtbl.t, Int.comparator_witness) Map.t;
-    main's_coloring : (int, int) Hashtbl.t;
+    colorings :
+      (int, (Ir.Register.t, int) Hashtbl.t, Int.comparator_witness) Map.t;
+    main's_coloring : (Ir.Register.t, int) Hashtbl.t;
   }
 
 let fresh_color ctx =
@@ -38,7 +40,8 @@ let handle_ending_regs ctx regs =
       acc >>= fun () ->
       match Hashtbl.find_and_remove ctx.live_regs reg with
       | None ->
-         Message.unreachable ("Color unknown register " ^ (Int.to_string reg))
+         Message.unreachable
+           ("Color unknown register " ^ (Ir.Register.to_string reg))
       | Some color -> Ok (recycle_color ctx color)
     )
 
@@ -87,7 +90,8 @@ let rec handle_block ctx proc label =
            let succs = Ssa.successors block.Ssa2.jump in
            List.fold succs ~init:(Ok ()) ~f:(fun acc label ->
                (* Use a physically distinct state *)
-               let ctx = { ctx with live_regs = Hashtbl.create (module Int) } in
+               let ctx =
+                 { ctx with live_regs = Hashtbl.create (module Ir.Register) } in
                acc >>= fun () ->
                handle_block ctx proc label)
 
@@ -95,10 +99,10 @@ let handle_proc proc =
   let open Result.Monad_infix in
   let ctx =
     { color_gen = 0
-    ; coloring = Hashtbl.create (module Int)
+    ; coloring = Hashtbl.create (module Ir.Register)
     ; free_colors = Set.empty (module Int)
-    ; live_regs = Hashtbl.create (module Int)
-    ; visited_blocks = Hashtbl.create (module Int) } in
+    ; live_regs = Hashtbl.create (module Ir.Register)
+    ; visited_blocks = Hashtbl.create (module Ir.Label) } in
   (* Perform register allocation on free variables and parameters first *)
   List.iter proc.Ssa2.free_vars ~f:(fun reg -> alloc_reg ctx reg);
   List.iter proc.Ssa2.params ~f:(fun reg -> alloc_reg ctx reg);

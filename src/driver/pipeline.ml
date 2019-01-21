@@ -27,7 +27,7 @@ let export self env type_env Ast.{ ann; exports; _ } =
             | None -> Message.unreachable "Pipeline export 2"
             | Some reg ->
                match Package.add_val self.package name ty i with
-               | Some () -> Ok (i + 1, (Anf.Register reg)::list)
+               | Some () -> Ok (i + 1, (Ir.Operand.Register reg)::list)
                | None -> Error (Sequence.return (Message.Reexported_name name))
     ) ~init:(Ok (0, [])) exports
   >>| fun (_, operands) ->

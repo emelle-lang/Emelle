@@ -19,10 +19,10 @@ type instr =
   | Memcopy of address * operand * operand
   | Prim of address * string
   | Ref of address * operand
-  | Break of Ssa.Label.t
+  | Break of Ir.Label.t
   | Fail
   | Return of operand
-  | Switch of operand * (int * Ssa.Label.t) list * Ssa.Label.t
+  | Switch of operand * (int * Ir.Label.t) list * Ir.Label.t
 
 type block = {
     instrs : instr Queue.t;
@@ -30,9 +30,9 @@ type block = {
   }
 
 type proc = {
-    free_vars : int list;
-    params : int list;
-    blocks : (Ssa.Label.t, block, Ssa.Label.comparator_witness) Map.t;
+    free_vars : address list;
+    params : address list;
+    blocks : (Ir.Label.t, block, Ir.Label.comparator_witness) Map.t;
   }
 
 type package = {

@@ -5,16 +5,16 @@
 open Base
 
 type t = {
-    ctx : (Ident.t, Anf.register) Hashtbl.t;
+    ctx : (Ident.t, Ir.Register.t) Hashtbl.t;
     (** Map from ids to variables *)
-    free_vars : (Anf.register * Anf.operand) Queue.t; (** Free variables *)
+    free_vars : (Ir.Register.t * Ir.Operand.t) Queue.t; (** Free variables *)
     pat_ctx : Pattern.context;
     parent : t option;
-    reg_gen : Anf.register ref;
+    reg_gen : Ir.Register.gen;
   }
 
 let create parent =
-  let reg_gen = ref 0 in
+  let reg_gen = Ir.Register.create_gen () in
   { ctx = Hashtbl.create (module Ident)
   ; free_vars = Queue.create ()
   ; pat_ctx = Pattern.create reg_gen
@@ -22,9 +22,7 @@ let create parent =
   ; reg_gen }
 
 let fresh_register self =
-  let id = !(self.reg_gen) in
-  self.reg_gen := id + 1;
-  id
+  Ir.Register.fresh self.reg_gen
 
 let rec free_var self id =
   (* I would use Hashtbl.find_or_add here, but the callback it takes isn't
@@ -38,7 +36,7 @@ let rec free_var self id =
          free_var parent id >>= fun var ->
          let reg = fresh_register self in
          let _ = Hashtbl.add self.ctx ~key:id ~data:reg in
-         Queue.enqueue self.free_vars (reg, Anf.Register var);
+         Queue.enqueue self.free_vars (reg, Ir.Operand.Register var);
          Ok reg
       | None ->
          Error (Sequence.return (Message.Unreachable "Lower free_var"))
@@ -51,7 +49,7 @@ let make_break self ann instr =
       Anf.Let
         ( reg
         , instr
-        , { Anf.ann; instr = Anf.Break (Anf.Register reg) } ) }
+        , { Anf.ann; instr = Anf.Break (Ir.Operand.Register reg) } ) }
 
 (** Combine statically known nested unary functions into multi-argument procs *)
 let rec proc_of_lambda self params id body ~cont =
@@ -82,26 +80,23 @@ and flatten_app self count args f x ~cont =
      let args = x::args in
      cont (
          if fields = count then
-           Anf.Box ((Anf.Lit (Literal.Int tag))::args)
+           Anf.Box ((Ir.Operand.Lit (Literal.Int tag))::args)
          else
            (* Handle a partially applied data constructor by generating a
               closure *)
-           let rec gen_ascending_ints list = function
-             | 0 -> list
-             | n -> gen_ascending_ints ((n - 1)::list) (n - 1) in
            let env = List.map ~f:(fun op -> (fresh_register self, op)) args in
            (* Closure parameters *)
-           let params = gen_ascending_ints [] (fields - count) in
+           let params = Ir.Register.gen_regs [] (fields - count) in
            (* Operand list of the parameters *)
            let regs_of_params =
-             List.map ~f:(fun reg -> Anf.Register reg) params in
+             List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
            (* The already known arguments, accessed from within the closure and
               backwards *)
            let free_var_regs =
-             List.map ~f:(fun (reg, _) -> Anf.Register reg) env in
+             List.map ~f:(fun (reg, _) -> Ir.Operand.Register reg) env in
            (* The final operands of the box opcode *)
            let box_contents =
-             (Anf.Lit (Literal.Int tag))::
+             (Ir.Operand.Lit (Literal.Int tag))::
                (List.append free_var_regs regs_of_params) in
            let proc =
              { Anf.env
@@ -196,10 +191,11 @@ and instr_of_lambdacode self ({ Lambda.ann; expr; _ } as lambda) ~cont =
        )
   | Lambda.Prim op -> cont (Prim op)
   | Lambda.Ref ->
+     let reg = Ir.Register.create_gen () |> Ir.Register.fresh in
      cont (Anf.Fun
              { env = []
-             ; params = [0]
-             ; body = make_break self ann (Anf.Ref (Anf.Register 0)) })
+             ; params = [reg]
+             ; body = make_break self ann (Anf.Ref (Ir.Operand.Register reg)) })
   | Lambda.Seq(s, t) ->
      instr_of_lambdacode self s ~cont:(fun s ->
          instr_of_lambdacode self t ~cont >>| fun t ->
@@ -235,29 +231,24 @@ and operand_of_lambdacode self lambda ~cont =
   let open Result.Monad_infix in
   match lambda.Lambda.expr with
   | Lambda.Constr(tag, size) ->
-     let rec f acc = function
-       | 0 -> acc
-       | n -> f ((n - 1)::acc) (n - 1)
-     in
-     let params = f [] size in
-     let vars = List.map ~f:(fun reg -> Anf.Register reg) params in
+     let params = Ir.Register.gen_regs [] size in
+     let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
      let proc =
        { Anf.env = []
        ; params
        ; body =
            make_break self lambda.Lambda.ann
-             (Anf.Box((Anf.Lit (Literal.Int tag))::vars)) }
-     in
+             (Anf.Box((Ir.Operand.Lit (Literal.Int tag))::vars)) } in
      let var = fresh_register self in
-     cont (Anf.Register var) >>| fun body ->
+     cont (Ir.Operand.Register var) >>| fun body ->
      { Anf.ann = lambda.Lambda.ann; instr = Anf.Let(var, Anf.Fun proc, body) }
-  | Lambda.Extern_var id -> cont (Anf.Extern_var id)
-  | Lambda.Lit lit -> cont (Anf.Lit lit)
+  | Lambda.Extern_var id -> cont (Ir.Operand.Extern_var id)
+  | Lambda.Lit lit -> cont (Ir.Operand.Lit lit)
   | Lambda.Local_var id ->
-     free_var self id >>= fun reg -> cont (Anf.Register reg)
+     free_var self id >>= fun reg -> cont (Ir.Operand.Register reg)
   | _ ->
      instr_of_lambdacode self lambda ~cont:(fun rhs ->
          let var = fresh_register self in
-         cont (Anf.Register var) >>| fun body ->
+         cont (Ir.Operand.Register var) >>| fun body ->
          { Anf.ann = lambda.Lambda.ann; instr = Anf.Let(var, rhs, body) }
        )

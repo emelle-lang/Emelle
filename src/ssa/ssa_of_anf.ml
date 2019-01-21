@@ -5,24 +5,24 @@
 open Base
 
 type jump_dest =
-  | Label of Ssa.Label.t
+  | Label of Ir.Label.t
   | Return
 
 type t = {
     procs : (int, Ssa.proc, Int.comparator_witness) Map.t ref;
     blocks :
-      (Ssa.Label.t, Ssa.basic_block, Ssa.Label.comparator_witness) Map.t ref;
-    label_gen : int ref;
+      (Ir.Label.t, Ssa.basic_block, Ir.Label.comparator_witness) Map.t ref;
+    label_gen : Ir.Label.gen;
     proc_gen : int ref;
     instrs : Ssa.instr Queue.t;
-    curr_block : Ssa.Label.t;
+    curr_block : Ir.Label.t;
     jump_dest : jump_dest;
   }
 
 (** Helper record for organizational purposes *)
 type branch = {
-    branch_idx : int;
-    label : Ssa.Label.t;
+    branch_idx : Ir.Label.t;
+    label : Ir.Label.t;
     block : Ssa.basic_block;
   }
 
@@ -32,8 +32,7 @@ type branch = {
     [cont]'s result *)
 let fresh_block ctx ~cont =
   let open Result.Let_syntax in
-  let idx = !(ctx.label_gen) in
-  ctx.label_gen := idx + 1;
+  let idx = Ir.Label.fresh ctx.label_gen in
   let%map ret, preds, instrs, jump = cont idx in
   let block = { Ssa.instrs; preds; jump } in
   ctx.blocks := Map.set !(ctx.blocks) ~key:idx ~data:block;
@@ -67,7 +66,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
                  compile_decision_tree ctx case_instrs case_idx branches tree
                in
                ( (case, case_idx)::list
-               , Set.singleton (module Ssa.Label) this_label
+               , Set.singleton (module Ir.Label) this_label
                , case_instrs
                , jump )
                end
@@ -80,14 +79,14 @@ let rec compile_decision_tree ctx instrs this_label branches =
              compile_decision_tree ctx else_instrs else_idx branches else_tree
            in
            ( else_idx
-           , Set.singleton (module Ssa.Label) this_label
+           , Set.singleton (module Ir.Label) this_label
            , else_instrs
            , jump )
          )
-     in Ssa.Switch(Anf.Register tag_reg, cases, else_block_idx)
+     in Ssa.Switch(Ir.Operand.Register tag_reg, cases, else_block_idx)
 
 let rec compile_opcode ctx anf ~cont
-        : (Ssa.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
+        : (Ir.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
   let open Result.Let_syntax in
   match anf with
   | Anf.Assign(lval, rval) -> cont ctx (Ssa.Assign(lval, rval))
@@ -118,7 +117,7 @@ let rec compile_opcode ctx anf ~cont
                            ; jump_dest = Label confl_idx }
                            instr in
                        ( (branch_idx, label)
-                       , Set.empty (module Ssa.Label)
+                       , Set.empty (module Ir.Label)
                        , branch_instrs
                        , jump )
                      )
@@ -128,7 +127,7 @@ let rec compile_opcode ctx anf ~cont
              compile_decision_tree ctx ctx.instrs ctx.curr_block
                (Array.of_list branches) tree in
            let preds =
-             List.fold branches ~init:(Set.empty (module Ssa.Label))
+             List.fold branches ~init:(Set.empty (module Ir.Label))
                ~f:(fun acc { label; _ } ->
                  Set.add acc label
                ) in
@@ -155,7 +154,7 @@ let rec compile_opcode ctx anf ~cont
   | Anf.Ref x -> cont ctx (Ssa.Ref x)
 
 and compile_instr ctx anf
-    : (Ssa.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
+    : (Ir.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
   let open Result.Let_syntax in
   match anf.Anf.instr with
   | Anf.Let(reg, op, next) ->
@@ -187,9 +186,10 @@ and compile_instr ctx anf
              (* Mutate the memory that the register points to *)
              Queue.enqueue ctx.instrs
                { Ssa.dest = unused
-               ; opcode = Ssa.Memcopy(Anf.Register reg, Anf.Register temp) };
-             acc ctx
-           )
+               ; opcode =
+                   Ssa.Memcopy( Ir.Operand.Register reg
+                              , Ir.Operand.Register temp ) };
+             acc ctx)
        ) ctx
   | Anf.Break operand ->
      Ok ( ctx.curr_block
@@ -199,46 +199,50 @@ and compile_instr ctx anf
 
 and compile_proc ctx proc =
   let open Result.Let_syntax in
-  let blocks = ref (Map.empty (module Ssa.Label)) in
+  let blocks = ref (Map.empty (module Ir.Label)) in
   let instrs = Queue.create () in
+  let label_gen = Ir.Label.create_gen () in
+  let entry_label = Ir.Label.fresh label_gen in
   let state =
     { ctx with
       blocks
     ; instrs
-    ; label_gen = ref 1
-    ; curr_block = 0
+    ; label_gen
+    ; curr_block = entry_label
     ; jump_dest = Return } in
   let%map before_return, jump = compile_instr state proc.Anf.body in
   let entry_block =
-    { Ssa.preds = Set.empty (module Ssa.Label)
+    { Ssa.preds = Set.empty (module Ir.Label)
     ; instrs
     ; jump } in
   { Ssa.free_vars = List.map ~f:(fun (reg, _) -> reg) proc.Anf.env
   ; params = proc.Anf.params
-  ; blocks = Map.set !blocks ~key:0 ~data:entry_block
-  ; entry = 0
+  ; blocks = Map.set !blocks ~key:entry_label ~data:entry_block
+  ; entry = entry_label
   ; before_return }
 
 let compile_package anf =
   let open Result.Let_syntax in
+  let label_gen = Ir.Label.create_gen () in
+  let entry_label = Ir.Label.fresh label_gen in
   let ctx =
     { procs = ref (Map.empty (module Int))
-    ; blocks = ref (Map.empty (module Ssa.Label))
+    ; blocks = ref (Map.empty (module Ir.Label))
     ; instrs = Queue.create ()
     ; proc_gen = ref 0
-    ; label_gen = ref 1
-    ; curr_block = 0
+    ; label_gen
+    ; curr_block = entry_label
     ; jump_dest = Return } in
   let%map before_return, jump = compile_instr ctx anf in
   let entry_block =
-    { Ssa.preds = Set.empty (module Ssa.Label)
+    { Ssa.preds = Set.empty (module Ir.Label)
     ; instrs = ctx.instrs
     ; jump } in
   let main_proc =
     { Ssa.free_vars = []
     ; params = []
-    ; blocks = Map.set !(ctx.blocks) ~key:0 ~data:entry_block
-    ; entry = 0
+    ; blocks = Map.set !(ctx.blocks) ~key:entry_label ~data:entry_block
+    ; entry = entry_label
     ; before_return } in
   { Ssa.procs = !(ctx.procs)
   ; main = main_proc }

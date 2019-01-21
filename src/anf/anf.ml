@@ -1,11 +1,8 @@
 open Base
 
-type register = int
+type register = Ir.Register.t
 
-type operand =
-  | Extern_var of Path.t
-  | Lit of Literal.t
-  | Register of int
+type operand = Ir.Operand.t
 
 (** A jump is a branch instruction to a join point with the given arguments *)
 and jump = operand list * int

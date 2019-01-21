@@ -23,16 +23,14 @@ type 'a row = {
 type 'a matrix = 'a row list
 
 type context = {
-    reg_gen : Anf.register ref
+    reg_gen : Ir.Register.gen
   }
 
 let create reg_gen =
   { reg_gen }
 
 let fresh_reg ctx =
-  let id = !(ctx.reg_gen) in
-  ctx.reg_gen := id + 1;
-  id
+  Ir.Register.fresh ctx.reg_gen
 
 (** Read into a row, and returns Some row where the indexed pattern has been
     moved to the front, or None if the index reads out of bounds. *)
@@ -209,9 +207,7 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
         | None -> Error Sequence.empty
         | Some rows ->
            match default_matrix rows with
-           | None ->
-              Error (Sequence.return
-                       (Message.Unreachable "No default of empty matrix"))
+           | None -> Message.unreachable "No default of empty matrix"
            | Some default ->
               match swap_occurrences i occurrences with
               | None ->
@@ -230,11 +226,9 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
                        | _::xs ->
                           let reg = fresh_reg ctx in
                           let (new_regs, occs) = push_occs rest (idx + 1) xs in
-                          reg::new_regs, (Anf.Register reg)::occs
-                     in
+                          reg::new_regs, (Ir.Operand.Register reg)::occs in
                      let (new_regs, pushed_occs) =
-                       push_occs rest_occs 0 product
-                     in
+                       push_occs rest_occs 0 product in
                      match specialize id product first_occ rows with
                      | None -> Message.unreachable "dec tree 1"
                      | Some matrix ->
@@ -265,6 +259,6 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
               | None -> Error Sequence.empty
               | Some matrix ->
                  let reg = fresh_reg ctx in
-                 let occs = (Anf.Register reg)::rest_occs in
+                 let occs = (Ir.Operand.Register reg)::rest_occs in
                  decision_tree_of_matrix ctx occs matrix >>| fun tree ->
                  Anf.Deref(first_occ, reg, tree)
