@@ -33,7 +33,7 @@ type opcode =
   | Ref of operand
 
 type instr = {
-    dest : int option;
+    dest : int;
     opcode : opcode;
   }
 

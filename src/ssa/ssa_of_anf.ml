@@ -43,7 +43,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
   let open Result.Let_syntax in
   function
   | Anf.Deref(occ, dest, tree) ->
-     Queue.enqueue instrs { Ssa.dest = Some dest; opcode = Deref occ };
+     Queue.enqueue instrs { Ssa.dest = dest; opcode = Deref occ };
      compile_decision_tree ctx instrs this_label branches tree
   | Anf.Fail -> Ok Ssa.Fail
   | Anf.Leaf(operands, idx) ->
@@ -51,7 +51,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
      block.Ssa.preds <- Set.add block.Ssa.preds this_label;
      Ok (Ssa.Break(branch_idx, operands))
   | Anf.Switch(tag_reg, occ, trees, else_tree) ->
-     Queue.enqueue instrs { Ssa.dest = Some tag_reg; opcode = Get(occ, 0) };
+     Queue.enqueue instrs { Ssa.dest = tag_reg; opcode = Get(occ, 0) };
      let%bind cases =
        Map.fold trees ~init:(Ok []) ~f: begin
            fun ~key:case ~data:(regs, tree) acc ->
@@ -62,7 +62,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
                let%map jump =
                  List.iteri ~f:(fun idx reg ->
                      Queue.enqueue case_instrs
-                       { Ssa.dest = Some reg; opcode = Get(occ, idx + 1) }
+                       { Ssa.dest = reg; opcode = Get(occ, idx + 1) }
                    ) regs;
                  compile_decision_tree ctx case_instrs case_idx branches tree
                in
@@ -108,8 +108,7 @@ let rec compile_opcode ctx anf ~cont
                        let branch_instrs = Queue.create () in
                        List.iteri reg_args ~f:(fun i reg_arg ->
                            Queue.enqueue branch_instrs
-                             { Ssa.dest = Some reg_arg
-                             ; opcode = Phi i };
+                             { Ssa.dest = reg_arg; opcode = Phi i };
                          );
                        let%map label, jump =
                          compile_instr
@@ -161,14 +160,14 @@ and compile_instr ctx anf
   match anf.Anf.instr with
   | Anf.Let(reg, op, next) ->
      compile_opcode ctx op ~cont:(fun ctx op ->
-         Queue.enqueue ctx.instrs { Ssa.dest = Some reg; opcode = op };
+         Queue.enqueue ctx.instrs { Ssa.dest = reg; opcode = op };
          compile_instr ctx next
        )
   | Anf.Let_rec(bindings, next) ->
      (* Initialize registers with dummy allocations *)
      let%bind () =
        List.fold_left bindings ~init:(Ok ()) ~f:begin
-           fun acc (reg, _, def) ->
+           fun acc (reg, _, _, def) ->
            let%bind () = acc in
            let%map size =
              match def with
@@ -176,27 +175,22 @@ and compile_instr ctx anf
              | Anf.Fun proc -> Ok (List.length proc.Anf.env + 1)
              | _ -> Error (Sequence.return Message.Unsafe_let_rec) in
            Queue.enqueue ctx.instrs
-             { Ssa.dest = Some reg; opcode = Ssa.Box_dummy size }
+             { Ssa.dest = reg; opcode = Ssa.Box_dummy size }
          end in
      (* Accumulator is a function *)
      List.fold_right bindings ~init:(fun ctx ->
          compile_instr ctx next
-       ) ~f:(fun (reg, temp, op) acc ctx ->
+       ) ~f:(fun (reg, temp, unused, op) acc ctx ->
          compile_opcode ctx op ~cont:(fun ctx op ->
              (* Evaluate the let-rec binding RHS *)
-             Queue.enqueue ctx.instrs { Ssa.dest = Some temp; opcode = op };
+             Queue.enqueue ctx.instrs { Ssa.dest = temp; opcode = op };
              (* Mutate the memory that the register points to *)
              Queue.enqueue ctx.instrs
-               { Ssa.dest = None
+               { Ssa.dest = unused
                ; opcode = Ssa.Memcopy(Anf.Register reg, Anf.Register temp) };
              acc ctx
            )
        ) ctx
-  | Anf.Seq(op, next) ->
-     compile_opcode ctx op ~cont:(fun ctx opcode ->
-         Queue.enqueue ctx.instrs { Ssa.dest = None; opcode = opcode };
-         compile_instr ctx next
-       )
   | Anf.Break operand ->
      Ok ( ctx.curr_block
         , match ctx.jump_dest with

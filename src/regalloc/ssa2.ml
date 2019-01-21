@@ -1,7 +1,7 @@
 open Base
 
 type instr = {
-    dest : int option;
+    dest : int;
     opcode : Ssa.opcode;
     ending_regs : (int, Int.comparator_witness) Set.t;
   }

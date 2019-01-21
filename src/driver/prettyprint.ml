@@ -229,10 +229,7 @@ module Ssa = struct
        print_operand pp op
 
   let print_instr pp Ssa.{ dest; opcode; _ } =
-    begin match dest with
-    | Some reg -> print_reg pp reg
-    | None -> Buffer.add_char pp.buffer '_'
-    end;
+    print_reg pp dest;
     Buffer.add_string pp.buffer " = ";
     print_opcode pp opcode
 

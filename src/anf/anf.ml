@@ -40,8 +40,7 @@ and 'a join_point = register list * 'a instr
 and 'a instr' =
   | Break of operand
   | Let of register * 'a opcode * 'a instr
-  | Let_rec of (register * register * 'a opcode) list * 'a instr
-  | Seq of 'a opcode * 'a instr
+  | Let_rec of (register * register * register * 'a opcode) list * 'a instr
 
 and 'a instr = {
     instr : 'a instr';

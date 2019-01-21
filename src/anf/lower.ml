@@ -203,7 +203,8 @@ and instr_of_lambdacode self ({ Lambda.ann; expr; _ } as lambda) ~cont =
   | Lambda.Seq(s, t) ->
      instr_of_lambdacode self s ~cont:(fun s ->
          instr_of_lambdacode self t ~cont >>| fun t ->
-         { Anf.ann; instr = Seq(s, t) }
+         let var = fresh_register self in
+         { Anf.ann; instr = Let(var, s, t) }
        )
 
 (** This function implements the compilation of a let-rec expression, as used in
@@ -214,15 +215,16 @@ and compile_letrec self bindings ~cont =
       acc >>= fun list ->
       let var = fresh_register self in
       let temp_var = fresh_register self in
+      let unused_reg = fresh_register self in
       match Hashtbl.add self.ctx ~key:lhs ~data:var with
       | `Duplicate ->
          Error (Sequence.return (Message.Unreachable "Bytecode comp letrec"))
-      | `Ok -> Ok ((var, temp_var, rhs)::list)
+      | `Ok -> Ok ((var, temp_var, unused_reg, rhs)::list)
     ) ~init:(Ok []) bindings >>= fun list ->
   let rec f bindings = function
-    | (var, temp_var, rhs)::rest ->
+    | (var, temp_var, unused, rhs)::rest ->
        instr_of_lambdacode self rhs ~cont:(fun opcode ->
-           f ((var, temp_var, opcode)::bindings) rest
+           f ((var, temp_var, unused, opcode)::bindings) rest
          )
     | [] -> cont bindings
   in f [] list

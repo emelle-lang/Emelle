@@ -42,11 +42,8 @@ let handle_regs live_regs regs =
 let handle_instr live_regs instr =
   let (live_regs, ending_regs) =
     handle_regs live_regs (regs_of_opcode instr.Ssa.opcode) in
-  let live_regs =
-    match instr.Ssa.dest with
-    | None -> live_regs
-    | Some reg -> Set.remove live_regs reg in
-  ( { Post_ssa.dest = instr.Ssa.dest
+  let live_regs = Set.remove live_regs instr.Ssa.dest in
+  ( { Ssa2.dest = instr.Ssa.dest
     ; opcode = instr.Ssa.opcode
     ; ending_regs }
   , live_regs )
@@ -67,8 +64,8 @@ let rec handle_block live_regs blocks proc label =
   let open Result.Monad_infix in
   match find_block proc label with
   | Some block ->
-     let succs = Ssa.successors block.Ssa.jump in
-     List.fold succs ~init:(Ok (blocks, live_regs)) ~f:(fun acc label ->
+     let succs = Set.of_list (module Int) (Ssa.successors block.Ssa.jump) in
+     Set.fold succs ~init:(Ok (blocks, live_regs)) ~f:(fun acc label ->
          acc >>= fun (blocks, live_regs) ->
          handle_block live_regs blocks proc label
        ) >>| fun (blocks, live_regs) ->
@@ -78,7 +75,7 @@ let rec handle_block live_regs blocks proc label =
      let live_regs = Set.union live_regs ending_at_jump in
      let instrs, live_regs = handle_instrs live_regs block.Ssa.instrs in
      let block' =
-       { Post_ssa.preds = block.Ssa.preds
+       { Ssa2.preds = block.Ssa.preds
        ; instrs
        ; jump = block.Ssa.jump
        ; ending_at_jump } in
@@ -91,7 +88,7 @@ let handle_proc proc =
   let map = Map.empty (module Int) in
   handle_block live_regs map proc proc.Ssa.entry
   >>| fun (blocks, _) ->
-  { Post_ssa.free_vars = proc.Ssa.free_vars
+  { Ssa2.free_vars = proc.Ssa.free_vars
   ; params = proc.Ssa.params
   ; entry = proc.Ssa.entry
   ; blocks = blocks
@@ -106,4 +103,4 @@ let handle_package { Ssa.procs; main } =
       Map.set map ~key:id ~data:proc
     ) >>= fun procs ->
   handle_proc main >>| fun main ->
-  { Post_ssa.procs; main }
+  { Ssa2.procs; main }
