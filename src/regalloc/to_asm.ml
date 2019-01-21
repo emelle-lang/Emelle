@@ -63,7 +63,7 @@ let compile_instr coloring { Ssa2.dest; opcode; _ } =
 let rec compile_basic_block new_blocks coloring proc label =
   let open Result.Let_syntax in
   match Map.find new_blocks label with
-  | Some (_, phis) -> Ok (new_blocks, phis)
+  | Some { Asm.phis; _ } -> Ok (new_blocks, phis)
   | None ->
      match Map.find proc.Ssa2.blocks label with
      | None -> Message.unreachable "to_asm compile_basic_block 1"
@@ -102,15 +102,29 @@ let rec compile_basic_block new_blocks coloring proc label =
              let%map scrut = compile_operand coloring scrut in
              Queue.enqueue instrs (Asm.Switch(scrut, cases, else_case));
              new_blocks
-        in (Map.set new_blocks ~key:label ~data:(instrs, phis), phis)
+        in (Map.set new_blocks ~key:label ~data:{ Asm.instrs; phis}, phis)
 
 let compile_proc coloring proc =
   let open Result.Let_syntax in
   let map = Map.empty (module Ssa.Label) in
-  let%map map, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
-  map
+  let%bind free_vars =
+    List.fold_right proc.Ssa2.free_vars ~init:(Ok []) ~f:(fun reg acc ->
+        let%bind list = acc in
+        match Hashtbl.find coloring reg with
+        | Some color -> Ok (color::list)
+        | None -> Message.unreachable "compile_proc free_vars"
+      ) in
+  let%bind params =
+    List.fold_right proc.Ssa2.params ~init:(Ok []) ~f:(fun reg acc ->
+        let%bind list = acc in
+        match Hashtbl.find coloring reg with
+        | Some color -> Ok (color::list)
+        | None -> Message.unreachable "compile_proc params"
+      ) in
+  let%map blocks, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
+  { Asm.free_vars; params; blocks }
 
-let compile_package colorings main's_coloring package =
+let compile_package { Color.colorings; main's_coloring } package =
   let open Result.Let_syntax in
   let%bind procs =
     Map.fold package.Ssa2.procs ~init:(Ok (Map.empty (module Int)))
@@ -123,4 +137,4 @@ let compile_package colorings main's_coloring package =
            Map.set procs ~key:name ~data:blocks
       ) in
   let%map main = compile_proc main's_coloring package.Ssa2.main in
-  (procs, main)
+  { Asm.procs; main }

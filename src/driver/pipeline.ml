@@ -69,6 +69,6 @@ let compile packages name ast_package =
   Liveness.handle_package package
   >>= fun package' ->
   Color.handle_package package'
-  >>= fun (colorings, main's_coloring) ->
-  To_asm.compile_package colorings main's_coloring package'
+  >>= fun colorings ->
+  To_asm.compile_package colorings package'
   >>| fun _ -> package

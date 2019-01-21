@@ -1,12 +1,17 @@
 open Base
 
-type t = {
+type ctx = {
     mutable color_gen : int; (** The color to use if there are no free colors *)
     coloring : (int, int) Hashtbl.t; (** Map from registers to colors *)
     mutable free_colors : (int, Int.comparator_witness) Set.t;
       (** The colors that may be reused *)
     live_regs : (int, int) Hashtbl.t;
-    visited_blocks : (Ssa.Label.t, t) Hashtbl.t;
+    visited_blocks : (Ssa.Label.t, ctx) Hashtbl.t;
+  }
+
+type t = {
+    colorings : (int, (int, int) Hashtbl.t, Int.comparator_witness) Map.t;
+    main's_coloring : (int, int) Hashtbl.t;
   }
 
 let fresh_color ctx =
@@ -109,7 +114,7 @@ let handle_package package =
       acc >>= fun map ->
       handle_proc data >>| fun coloring ->
       Map.set map ~key ~data:coloring
-    ) >>= fun map ->
+    ) >>= fun colorings ->
   handle_proc package.Ssa2.main
   >>| fun main's_coloring ->
-  (map, main's_coloring)
+  { colorings; main's_coloring }
