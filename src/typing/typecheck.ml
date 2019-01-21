@@ -307,8 +307,7 @@ let make_impure checker ty =
       Type.Impure
       (fresh_quant checker)
       checker.lam_level
-      Kind.Mono
-  in
+      Kind.Mono in
   let _ = Type.occurs tvar ty in
   ()
 
@@ -509,8 +508,7 @@ and infer_branch checker scruts pats =
   let rec f map scruts pats =
     match scruts, pats with
     | [], [] -> Ok map
-    | [], _ | _, [] ->
-       Error (Sequence.return (Message.Unreachable "infer_branch"))
+    | [], _ | _, [] -> Message.unreachable "infer_branch"
     | scrut::scruts, pat::pats ->
        infer_pattern checker map scrut.Lambda.ty pat
        >>= fun map ->
@@ -564,8 +562,7 @@ let typecheck typechecker term_file =
            [ { Pattern.patterns = pats
              ; bindings = Map.empty (module Ident)
              ; action = 0 } ]
-         in
-         (Lambda.Top_let(scruts, ids, matrix))::list
+         in (Lambda.Top_let(scruts, ids, matrix))::list
       | Term.Top_let_rec bindings ->
          infer_rec_bindings typechecker bindings >>| fun bindings ->
          (Lambda.Top_let_rec bindings)::list

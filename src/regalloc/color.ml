@@ -10,10 +10,14 @@ type ctx = {
     visited_blocks : (Ir.Label.t, ctx) Hashtbl.t;
   }
 
+type coloring = {
+    map : (Ir.Register.t, int) Hashtbl.t;
+    frame_size : int;
+  }
+
 type t = {
-    colorings :
-      (int, (Ir.Register.t, int) Hashtbl.t, Int.comparator_witness) Map.t;
-    main's_coloring : (Ir.Register.t, int) Hashtbl.t;
+    colorings : (int, coloring, Int.comparator_witness) Map.t;
+    main's_coloring : coloring;
   }
 
 let fresh_color ctx =
@@ -109,7 +113,7 @@ let handle_proc proc =
   (* Perform register allocation on entry block; blocks that are unreachable
      will not be visited. *)
   handle_block ctx proc proc.Ssa2.entry >>| fun () ->
-  ctx.coloring
+  { map = ctx.coloring; frame_size = ctx.color_gen }
 
 let handle_package package =
   let open Result.Monad_infix in

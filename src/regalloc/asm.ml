@@ -33,6 +33,7 @@ type proc = {
     free_vars : address list;
     params : address list;
     blocks : (Ir.Label.t, block, Ir.Label.comparator_witness) Map.t;
+    frame_size : int;
   }
 
 type package = {

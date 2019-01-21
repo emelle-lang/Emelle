@@ -7,7 +7,7 @@ let compile_operand coloring = function
   | Ir.Operand.Extern_var path -> Ok (Asm.Extern_var path)
   | Ir.Operand.Lit lit -> Ok (Asm.Lit lit)
   | Ir.Operand.Register reg ->
-     match Hashtbl.find coloring reg with
+     match Hashtbl.find coloring.Color.map reg with
      | Some color -> Ok (Asm.Stack color)
      | None -> Message.unreachable "to_asm compile_operand"
 
@@ -24,7 +24,7 @@ type compile_opcode_result =
 
 let compile_instr coloring { Ssa2.dest; opcode; _ } =
   let open Result.Let_syntax in
-  match Hashtbl.find coloring dest with
+  match Hashtbl.find coloring.Color.map dest with
   | None -> Message.unreachable "compile_instr"
   | Some dest ->
      match opcode with
@@ -76,7 +76,7 @@ let rec compile_basic_block new_blocks coloring proc label =
         let%bind () =
           List.fold block.Ssa2.instrs ~init:(Ok ()) ~f:(fun acc instr ->
               let%bind () = acc in
-              match Hashtbl.find coloring instr.Ssa2.dest with
+              match Hashtbl.find coloring.Color.map instr.Ssa2.dest with
               | None -> Message.unreachable "to_asm compile_basic_block 2"
               | Some color ->
                  match%map compile_instr coloring instr with
@@ -113,19 +113,19 @@ let compile_proc coloring proc =
   let%bind free_vars =
     List.fold_right proc.Ssa2.free_vars ~init:(Ok []) ~f:(fun reg acc ->
         let%bind list = acc in
-        match Hashtbl.find coloring reg with
+        match Hashtbl.find coloring.Color.map reg with
         | Some color -> Ok (color::list)
         | None -> Message.unreachable "compile_proc free_vars"
       ) in
   let%bind params =
     List.fold_right proc.Ssa2.params ~init:(Ok []) ~f:(fun reg acc ->
         let%bind list = acc in
-        match Hashtbl.find coloring reg with
+        match Hashtbl.find coloring.Color.map reg with
         | Some color -> Ok (color::list)
         | None -> Message.unreachable "compile_proc params"
       ) in
   let%map blocks, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
-  { Asm.free_vars; params; blocks }
+  { Asm.free_vars; params; blocks; frame_size = coloring.Color.frame_size }
 
 let compile_package { Color.colorings; main's_coloring } package =
   let open Result.Let_syntax in
