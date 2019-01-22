@@ -102,9 +102,18 @@ let rec compile_basic_block new_blocks coloring proc label =
              Queue.enqueue instrs (Asm.Return operand);
              new_blocks
           | Ssa.Switch(scrut, cases, else_case) ->
-             let%map scrut = compile_operand coloring scrut in
+             let%bind scrut = compile_operand coloring scrut in
              Queue.enqueue instrs (Asm.Switch(scrut, cases, else_case));
-             new_blocks
+             let%bind new_blocks =
+               List.fold cases ~init:(Ok new_blocks) ~f:(fun acc (_, label) ->
+                   let%bind new_blocks = acc in
+                   let%map new_blocks, _ =
+                     compile_basic_block new_blocks coloring proc label
+                   in new_blocks
+                 ) in
+             let%map new_blocks, _ =
+               compile_basic_block new_blocks coloring proc else_case
+             in new_blocks
         in (Map.set new_blocks ~key:label ~data:{ Asm.instrs; phis}, phis)
 
 let compile_proc coloring proc =

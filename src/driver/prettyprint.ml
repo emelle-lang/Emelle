@@ -125,6 +125,14 @@ let rec print_comma_sep f pp = function
      Buffer.add_string pp.buffer ", ";
      print_comma_sep f pp xs
 
+let print_label pp label =
+  Buffer.add_char pp.buffer 'L';
+  Buffer.add_string pp.buffer (Ir.Label.to_string label)
+
+let print_procname pp name =
+  Buffer.add_char pp.buffer 'F';
+  Buffer.add_string pp.buffer (Int.to_string name)
+
 module Ssa = struct
   let print_reg pp reg =
     Buffer.add_string pp.buffer "r%";
@@ -137,10 +145,6 @@ module Ssa = struct
        print_lit pp lit
     | Ir.Operand.Register id ->
        print_reg pp id
-
-  let print_label pp label =
-    Buffer.add_char pp.buffer 'L';
-    Buffer.add_string pp.buffer (Ir.Label.to_string label)
 
   let print_jump pp = function
     | Ssa.Break(label, args) ->
@@ -165,10 +169,6 @@ module Ssa = struct
        Buffer.add_string pp.buffer "] ";
        print_label pp else_label
 
-  let print_procname pp name =
-    Buffer.add_char pp.buffer 'F';
-    Buffer.add_string pp.buffer (Int.to_string name)
-
   let print_opcode pp = function
     | Ssa.Assign(lval, rval) ->
        Buffer.add_string pp.buffer "assn ";
@@ -177,7 +177,7 @@ module Ssa = struct
        print_operand pp rval
     | Ssa.Box items ->
        Buffer.add_string pp.buffer "box [";
-       List.iter ~f:(print_operand pp) items;
+       print_comma_sep print_operand pp items;
        Buffer.add_char pp.buffer ']'
     | Ssa.Box_dummy size ->
        Buffer.add_string pp.buffer "dummy ";
@@ -274,4 +274,125 @@ module Ssa = struct
       ) procs;
     Buffer.add_string pp.buffer "main";
     print_proc pp main
+end
+
+module Asm = struct
+  let print_addr pp addr =
+    Buffer.add_string pp.buffer @@ Int.to_string addr
+
+  let print_operand pp = function
+    | Asm.Extern_var path -> print_qual_id pp path
+    | Asm.Lit lit -> print_lit pp lit
+    | Asm.Stack addr -> print_addr pp addr
+
+  let print_instr_args pp name dest args : unit =
+    Buffer.add_string pp.buffer name;
+    Buffer.add_char pp.buffer ' ';
+    print_addr pp dest;
+    List.iter args ~f:(fun arg ->
+        Buffer.add_char pp.buffer ' ';
+        print_operand pp arg;
+      )
+
+  let print_instr pp = function
+    | Asm.Assign(dest, lval, rval) ->
+       print_instr_args pp "assign" dest [lval; rval]
+    | Asm.Box(dest, operands) ->
+       Buffer.add_string pp.buffer "box ";
+       print_addr pp dest;
+       Buffer.add_string pp.buffer " [";
+       print_comma_sep print_operand pp operands;
+       Buffer.add_char pp.buffer ']'
+    | Asm.Box_dummy(dest, size) ->
+       Buffer.add_string pp.buffer "box_dummy ";
+       print_addr pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer (Int.to_string size)
+    | Asm.Call(dest, f, arg, args) ->
+       print_instr_args pp "call" dest [f];
+       Buffer.add_char pp.buffer '(';
+       print_comma_sep print_operand pp (arg::args);
+       Buffer.add_char pp.buffer ')';
+    | Asm.Deref(dest, ptr) ->
+       print_instr_args pp "deref" dest [ptr]
+    | Asm.Fun(dest, procname, captures) ->
+       print_instr_args pp "closure" dest [];
+       Buffer.add_char pp.buffer ' ';
+       print_procname pp procname;
+       Buffer.add_char pp.buffer '(';
+       print_comma_sep print_operand pp captures;
+       Buffer.add_char pp.buffer ')'
+    | Asm.Get(dest, value, idx) ->
+       print_instr_args pp "get" dest [value];
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer @@ Int.to_string idx
+    | Asm.Move(dest, src) ->
+       print_instr_args pp "move" dest [src]
+    | Asm.Memcopy(dest, mem_dest, src) ->
+       print_instr_args pp "memcopy" dest [mem_dest; src]
+    | Asm.Prim(dest, primop) ->
+       Buffer.add_string pp.buffer "prim ";
+       print_addr pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer @@ String.escaped primop
+    | Asm.Ref(dest, value) ->
+       print_instr_args pp "ref" dest [value]
+    | Asm.Break label ->
+       Buffer.add_string pp.buffer "break ";
+       print_label pp label
+    | Asm.Fail ->
+       Buffer.add_string pp.buffer "panic"
+    | Asm.Return retval ->
+       Buffer.add_string pp.buffer "return ";
+       print_operand pp retval
+    | Asm.Switch(scrut, cases, else_case) ->
+       Buffer.add_string pp.buffer "switch ";
+       print_operand pp scrut;
+       Buffer.add_string pp.buffer " [";
+       print_comma_sep (fun pp (tag, label) ->
+           Buffer.add_string pp.buffer (Int.to_string tag);
+           Buffer.add_string pp.buffer " -> ";
+           print_label pp label
+         ) pp cases;
+       Buffer.add_string pp.buffer "] ";
+       print_label pp else_case
+
+  let print_block pp block =
+    Queue.iteri block.Asm.instrs ~f:(fun i instr ->
+        print_instr pp instr;
+        if i <> (Queue.length block.Asm.instrs - 1) then
+          newline pp
+      )
+
+  let print_proc pp proc =
+    Buffer.add_char pp.buffer '[';
+    print_comma_sep print_addr pp proc.Asm.free_vars;
+    Buffer.add_char pp.buffer ']';
+    Buffer.add_char pp.buffer '(';
+    print_comma_sep print_addr pp proc.Asm.params;
+    Buffer.add_char pp.buffer ')';
+    indent pp (fun pp ->
+        newline pp;
+        Buffer.add_string pp.buffer "max frame size: ";
+        Buffer.add_string pp.buffer (Int.to_string proc.Asm.frame_size);
+        newline pp;
+        Map.iteri proc.Asm.blocks ~f:(fun ~key:label ~data:block ->
+            print_label pp label;
+            Buffer.add_char pp.buffer ':';
+            indent pp (fun pp ->
+                newline pp;
+                print_block pp block
+              );
+            newline pp
+          )
+      )
+
+  let print_module pp package =
+    Map.iteri package.Asm.procs ~f:(fun ~key:name ~data:proc ->
+        print_procname pp name;
+        print_proc pp proc;
+        newline pp
+      );
+    Buffer.add_string pp.buffer "main";
+    print_proc pp package.Asm.main
 end

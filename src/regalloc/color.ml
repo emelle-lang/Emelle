@@ -4,6 +4,7 @@ type ctx = {
     mutable color_gen : int; (** The color to use if there are no free colors *)
     coloring : (Ir.Register.t, int) Hashtbl.t;
       (** Map from registers to colors *)
+    frame_size : int ref;
     mutable free_colors : (int, Int.comparator_witness) Set.t;
       (** The colors that may be reused *)
     live_regs : (Ir.Register.t, int) Hashtbl.t;
@@ -25,6 +26,9 @@ let fresh_color ctx =
   | None ->
      let c = ctx.color_gen in
      ctx.color_gen <- c + 1;
+     if ctx.color_gen > !(ctx.frame_size) then (
+       ctx.frame_size := ctx.color_gen
+     );
      c
   | Some color ->
      ctx.free_colors <- Set.remove_index ctx.free_colors 0;
@@ -104,6 +108,7 @@ let handle_proc proc =
   let ctx =
     { color_gen = 0
     ; coloring = Hashtbl.create (module Ir.Register)
+    ; frame_size = ref 0
     ; free_colors = Set.empty (module Int)
     ; live_regs = Hashtbl.create (module Ir.Register)
     ; visited_blocks = Hashtbl.create (module Ir.Label) } in
@@ -113,7 +118,7 @@ let handle_proc proc =
   (* Perform register allocation on entry block; blocks that are unreachable
      will not be visited. *)
   handle_block ctx proc proc.Ssa2.entry >>| fun () ->
-  { map = ctx.coloring; frame_size = ctx.color_gen }
+  { map = ctx.coloring; frame_size = !(ctx.frame_size) }
 
 let handle_package package =
   let open Result.Monad_infix in

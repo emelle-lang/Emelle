@@ -71,4 +71,4 @@ let compile packages name ast_package =
   Color.handle_package package'
   >>= fun colorings ->
   To_asm.compile_package colorings package'
-  >>| fun _ -> package
+  >>| fun package' -> (package, package')
