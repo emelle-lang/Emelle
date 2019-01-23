@@ -21,6 +21,8 @@ The compiler phases are as follows, divided into subdirectories:
 - `src/ssa`: Tranforms the ANF into static single assignment (SSA) form, where
   each function consists of a set of basic blocks with branching at the end,
   but not in the middle
+- `src/regalloc`: Maps SSA virtual registers to stack offsets, eliminates phi
+  nodes
 
 - `src/common`: Contains modules not tied to any particular phase
 - `src/driver`: Contains the code that ties all the phases together

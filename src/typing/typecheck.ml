@@ -377,12 +377,12 @@ let rec infer_term checker Term.{ term; ann } =
      begin match infer_term checker f, infer_term checker x with
      | (Ok f, Ok x) ->
         let var = fresh_tvar checker in
-        Type.decr_lam_levels checker.lam_level f.Lambda.ty;
+        Type.decr_lam_levels checker.lam_level f.Typedtree.ty;
         let result =
-          unify_types checker f.Lambda.ty (Type.arrow x.Lambda.ty var)
+          unify_types checker f.Typedtree.ty (Type.arrow x.Typedtree.ty var)
         in
         result >>| fun () ->
-        { Lambda.ann; ty = var; expr = Lambda.App(f, x) }
+        { Typedtree.ann; ty = var; expr = Typedtree.App(f, x) }
      | (Error f_err, Error x_err) -> Error (Sequence.append f_err x_err)
      | (err, Ok _) | (Ok _, err) -> err
      end
@@ -391,10 +391,12 @@ let rec infer_term checker Term.{ term; ann } =
      infer_term checker lval >>= fun lval ->
      infer_term checker rval >>= fun rval ->
      unify_types checker
-       lval.Lambda.ty
-       (Type.App(Type.Prim Type.Ref, rval.Lambda.ty)) >>| fun () ->
-     make_impure checker rval.Lambda.ty;
-     { Lambda.ann; ty = rval.Lambda.ty; expr = Lambda.Assign(lval, rval) }
+       lval.Typedtree.ty
+       (Type.App(Type.Prim Type.Ref, rval.Typedtree.ty)) >>| fun () ->
+     make_impure checker rval.Typedtree.ty;
+     { Typedtree.ann
+     ; ty = rval.Typedtree.ty
+     ; expr = Typedtree.Assign(lval, rval) }
 
   | Term.Case(scrutinees, cases) ->
      let out_ty = fresh_tvar checker in
@@ -409,7 +411,7 @@ let rec infer_term checker Term.{ term; ann } =
          acc >>= fun (idx, matrix, branches) ->
          infer_branch checker scruts pats >>= fun () ->
          infer_term checker consequent >>= fun consequent ->
-         unify_types checker consequent.Lambda.ty out_ty >>| fun () ->
+         unify_types checker consequent.Typedtree.ty out_ty >>| fun () ->
          ( idx - 1
          , { Pattern.patterns = pats
            ; bindings = Map.empty (module Ident)
@@ -417,40 +419,42 @@ let rec infer_term checker Term.{ term; ann } =
          , (ids, consequent)::branches )
        ) ~init:(Ok (List.length cases - 1, [], [])) cases
      >>| fun (_, matrix, branches) ->
-     { Lambda.ann
+     { Typedtree.ann
      ; ty = out_ty
-     ; expr = Lambda.Case(scruts, matrix, branches) }
+     ; expr = Typedtree.Case(scruts, matrix, branches) }
 
   | Term.Constr(adt, idx) ->
      let _, product, out_ty = adt.Type.constrs.(idx) in
      let ty = Type.curry product out_ty in
-     Ok { Lambda.ann
+     Ok { Typedtree.ann
         ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
-        ; expr = Lambda.Constr(idx, List.length product) }
+        ; expr = Typedtree.Constr(idx, List.length product) }
 
   | Term.Extern_var(id, ty) ->
-     Ok { Lambda.ann
+     Ok { Typedtree.ann
         ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
-        ; expr = Lambda.Extern_var id }
+        ; expr = Typedtree.Extern_var id }
 
   | Term.Lam(id, body) ->
      in_new_lam_level (fun checker ->
          let var = fresh_tvar checker in
          Hashtbl.add_exn checker.env ~key:id ~data:var;
          infer_term checker body >>= fun body ->
-         Ok { Lambda.ann
-            ; ty = Type.arrow var body.Lambda.ty
-            ; expr = Lambda.Lam(id, body) }
+         Ok { Typedtree.ann
+            ; ty = Type.arrow var body.Typedtree.ty
+            ; expr = Typedtree.Lam(id, body) }
        ) checker
 
   | Term.Let(lhs, rhs, body) ->
      in_new_let_level (fun checker ->
          infer_term checker rhs
        ) checker >>= fun rhs ->
-     gen checker rhs.Lambda.ty;
-     Hashtbl.add_exn checker.env ~key:lhs ~data:rhs.Lambda.ty;
+     gen checker rhs.Typedtree.ty;
+     Hashtbl.add_exn checker.env ~key:lhs ~data:rhs.Typedtree.ty;
      infer_term checker body >>| fun body ->
-     { Lambda.ann; ty = body.Lambda.ty; expr = Lambda.Let(lhs, rhs, body) }
+     { Typedtree.ann
+     ; ty = body.Typedtree.ty
+     ; expr = Typedtree.Let(lhs, rhs, body) }
 
   | Term.Let_rec(bindings, body) ->
      infer_rec_bindings checker bindings >>= fun bindings ->
@@ -462,10 +466,11 @@ let rec infer_term checker Term.{ term; ann } =
          | None -> ()
        ) bindings;
      infer_term checker body >>| fun body ->
-     { Lambda.ann; ty = body.Lambda.ty; expr = Lambda.Let_rec(bindings, body) }
+     { Typedtree.ann
+     ; ty = body.Typedtree.ty; expr = Typedtree.Let_rec(bindings, body) }
 
   | Term.Lit lit ->
-     Ok { Lambda.ann
+     Ok { Typedtree.ann
         ; ty =
             begin match lit with
             | Literal.Char _ -> Type.Prim Type.Char
@@ -473,34 +478,34 @@ let rec infer_term checker Term.{ term; ann } =
             | Literal.Int _ -> Type.Prim Type.Int
             | Literal.String _ -> Type.Prim Type.String
             end
-        ; expr = Lambda.Lit lit }
+        ; expr = Typedtree.Lit lit }
 
   | Term.Prim(op, ty) ->
      type_of_ast_polytype checker ty >>| fun ty ->
-     { Lambda.ann
+     { Typedtree.ann
      ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
-     ; expr = Lambda.Prim op }
+     ; expr = Typedtree.Prim op }
 
   | Term.Ref ->
      in_new_lam_level (fun checker ->
          let var = fresh_tvar checker in
          make_impure checker var;
-         Ok { Lambda.ann
+         Ok { Typedtree.ann
             ; ty = Type.arrow var (Type.App(Type.Prim Type.Ref, var))
-            ; expr = Lambda.Ref }
+            ; expr = Typedtree.Ref }
        ) checker
 
   | Term.Seq(s, t) ->
      infer_term checker s >>= fun s ->
      infer_term checker t >>| fun t ->
-     { Lambda.ann; ty = t.Lambda.ty; expr = Lambda.Seq(s, t) }
+     { Typedtree.ann; ty = t.Typedtree.ty; expr = Typedtree.Seq(s, t) }
 
   | Term.Var id ->
      match Hashtbl.find checker.env id with
      | Some ty ->
-        Ok { Lambda.ann
+        Ok { Typedtree.ann
            ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
-           ; expr = Lambda.Local_var id }
+           ; expr = Typedtree.Local_var id }
      | None -> Error (Sequence.return (Message.Unreachable "Tc expr var"))
 
 and infer_branch checker scruts pats =
@@ -510,7 +515,7 @@ and infer_branch checker scruts pats =
     | [], [] -> Ok map
     | [], _ | _, [] -> Message.unreachable "infer_branch"
     | scrut::scruts, pat::pats ->
-       infer_pattern checker map scrut.Lambda.ty pat
+       infer_pattern checker map scrut.Typedtree.ty pat
        >>= fun map ->
        f map scruts pats
   in
@@ -537,7 +542,7 @@ and infer_rec_bindings checker bindings =
       let f (lhs, rhs) acc =
         let tvar = Hashtbl.find_exn checker.env lhs in
         infer_term checker rhs >>= fun rhs ->
-        match acc, unify_types checker tvar rhs.Lambda.ty with
+        match acc, unify_types checker tvar rhs.Typedtree.ty with
         | Ok acc, Ok () -> Ok ((lhs, rhs)::acc)
         | Ok _, Error e | Error e, Ok () -> Error e
         | Error e1, Error e2 -> Error (Sequence.append e1 e2)
@@ -562,12 +567,12 @@ let typecheck typechecker term_file =
            [ { Pattern.patterns = pats
              ; bindings = Map.empty (module Ident)
              ; action = 0 } ]
-         in (Lambda.Top_let(scruts, ids, matrix))::list
+         in (Typedtree.Top_let(scruts, ids, matrix))::list
       | Term.Top_let_rec bindings ->
          infer_rec_bindings typechecker bindings >>| fun bindings ->
-         (Lambda.Top_let_rec bindings)::list
+         (Typedtree.Top_let_rec bindings)::list
     ) ~init:(Ok []) term_file.Term.items
   >>| fun items ->
-  { Lambda.top_ann = term_file.Term.top_ann
+  { Typedtree.top_ann = term_file.Term.top_ann
   ; items = List.rev items
   ; env = typechecker.env }

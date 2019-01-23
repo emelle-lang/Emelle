@@ -41,23 +41,23 @@ let compile_package self env ast_file =
   Typecheck.typecheck typechecker term_file
   >>= fun typed_file ->
   let rec loop = function
-    | Lambda.Top_let(scruts, bindings, matrix)::rest ->
+    | Typedtree.Top_let(scruts, bindings, matrix)::rest ->
        Lower.compile_case self.lowerer scruts matrix
          ~cont:(fun tree ->
            Lower.compile_branch self.lowerer bindings >>= fun params ->
            loop rest >>| fun body ->
            Lower.make_break
-             self.lowerer typed_file.Lambda.top_ann
+             self.lowerer typed_file.Typedtree.top_ann
              (Anf.Case(tree, [params, body]))
          )
-    | Lambda.Top_let_rec(bindings)::rest ->
+    | Typedtree.Top_let_rec(bindings)::rest ->
        Lower.compile_letrec self.lowerer bindings ~cont:(fun bindings ->
            loop rest >>| fun body ->
-           { Anf.ann = typed_file.Lambda.top_ann
+           { Anf.ann = typed_file.Typedtree.top_ann
            ; instr = Anf.Let_rec(bindings, body) }
          )
-    | [] -> export self term_file.Term.env typed_file.Lambda.env ast_file
-  in loop typed_file.Lambda.items
+    | [] -> export self term_file.Term.env typed_file.Typedtree.env ast_file
+  in loop typed_file.Typedtree.items
 
 let compile packages name ast_package =
   let open Result.Monad_infix in

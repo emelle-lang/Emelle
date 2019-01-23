@@ -1,6 +1,6 @@
 (** The compiler must transform statically known curried functions into
     multi-parameter functions, generate constant virtual registers, and compile
-    pattern matches into decision tree. *)
+    pattern matches into decision trees. *)
 
 open Base
 
@@ -52,31 +52,30 @@ let make_break self ann instr =
         , { Anf.ann; instr = Anf.Break (Ir.Operand.Register reg) } ) }
 
 (** Combine statically known nested unary functions into multi-argument procs *)
-let rec proc_of_lambda self params id body ~cont =
+let rec proc_of_typedtree self params id body ~cont =
   let reg = fresh_register self in
   match Hashtbl.add self.ctx ~key:id ~data:reg with
   | `Duplicate ->
      Error (Sequence.return (Message.Unreachable "Lower uncurry"))
   | `Ok ->
-     match body.Lambda.expr with
-     | Lambda.Lam(id, body) ->
-        proc_of_lambda self (reg::params) id body ~cont
+     match body.Typedtree.expr with
+     | Typedtree.Lam(id, body) ->
+        proc_of_typedtree self (reg::params) id body ~cont
      | _ ->
-        instr_of_lambdacode self body ~cont:(fun opcode ->
-            cont (Anf.Fun ({ env = Queue.to_list self.free_vars
-                           ; params = List.rev (reg::params)
-                           ; body = make_break self body.Lambda.ann opcode }))
-          )
+        instr_of_typedtree self body ~cont:(fun opcode ->
+            cont (Anf.Fun { env = Queue.to_list self.free_vars
+                          ; params = List.rev (reg::params)
+                          ; body = make_break self body.Typedtree.ann opcode }))
 
 (** Combine curried one-argument applications into a function call with all the
     arguments. *)
 and flatten_app self count args f x ~cont =
-  match f.Lambda.expr with
-  | Lambda.App(f, x') ->
-     operand_of_lambdacode self x' ~cont:(fun x' ->
+  match f.Typedtree.expr with
+  | Typedtree.App(f, x') ->
+     operand_of_typedtree self x' ~cont:(fun x' ->
          flatten_app self (count + 1) (x::args) f x' ~cont
        )
-  | Lambda.Constr(tag, fields) ->
+  | Typedtree.Constr(tag, fields) ->
      let args = x::args in
      cont (
          if fields = count then
@@ -101,13 +100,13 @@ and flatten_app self count args f x ~cont =
            let proc =
              { Anf.env
              ; params
-             ; body = make_break self f.Lambda.ann (Anf.Box box_contents) }
+             ; body = make_break self f.Typedtree.ann (Anf.Box box_contents) }
            in Anf.Fun proc
        )
-  | Lambda.Ref ->
+  | Typedtree.Ref ->
      cont (Anf.Ref x)
   | _ ->
-     operand_of_lambdacode self f ~cont:(fun f ->
+     operand_of_typedtree self f ~cont:(fun f ->
          cont (Anf.Call(f, x, args))
        )
 
@@ -117,7 +116,7 @@ and compile_case self scruts matrix ~cont =
   let open Result.Monad_infix in
   let rec loop operands = function
     | scrut::scruts ->
-       operand_of_lambdacode self scrut ~cont:(fun operand ->
+       operand_of_typedtree self scrut ~cont:(fun operand ->
            loop (operand::operands) scruts
          )
     | [] ->
@@ -140,26 +139,26 @@ and compile_branch self bindings =
       | `Ok -> Ok (param::params)
     ) ~init:(Ok []) bindings
 
-(** Convert a [Lambda.t] into an [instr]. *)
-and instr_of_lambdacode self ({ Lambda.ann; expr; _ } as lambda) ~cont =
+(** Convert a [Typedtree.expr] into an [instr]. *)
+and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
   let open Result.Monad_infix in
   match expr with
-  | Lambda.App(f, x) ->
-     operand_of_lambdacode self x ~cont:(fun x ->
+  | Typedtree.App(f, x) ->
+     operand_of_typedtree self x ~cont:(fun x ->
          flatten_app self 1 [] f x ~cont
        )
-  | Lambda.Assign(lhs, rhs) ->
-     operand_of_lambdacode self lhs ~cont:(fun lhs ->
-         operand_of_lambdacode self rhs ~cont:(fun rhs ->
+  | Typedtree.Assign(lhs, rhs) ->
+     operand_of_typedtree self lhs ~cont:(fun lhs ->
+         operand_of_typedtree self rhs ~cont:(fun rhs ->
              cont (Anf.Assign(lhs, rhs))
            )
        )
-  | Lambda.Case(scruts, matrix, branches) ->
+  | Typedtree.Case(scruts, matrix, branches) ->
      compile_case self scruts matrix ~cont:(fun tree ->
          List.fold_right ~f:(fun (bindings, body) acc ->
              acc >>= fun list ->
              compile_branch self bindings >>= fun params ->
-             instr_of_lambdacode self body ~cont:(fun opcode ->
+             instr_of_typedtree self body ~cont:(fun opcode ->
                  Ok (make_break self ann opcode)
                )
              >>| fun body -> (params, body)::list
@@ -167,44 +166,44 @@ and instr_of_lambdacode self ({ Lambda.ann; expr; _ } as lambda) ~cont =
          >>= fun branches ->
          cont (Anf.Case(tree, branches))
        )
-  | Lambda.Constr _ | Lambda.Extern_var _
-  | Lambda.Local_var _ | Lambda.Lit _ ->
-     operand_of_lambdacode self lambda ~cont:(fun operand ->
+  | Typedtree.Constr _ | Typedtree.Extern_var _
+  | Typedtree.Local_var _ | Typedtree.Lit _ ->
+     operand_of_typedtree self typedtree ~cont:(fun operand ->
          cont (Anf.Load operand)
        )
-  | Lambda.Lam(reg, body) ->
+  | Typedtree.Lam(reg, body) ->
      let self = create (Some self) in
-     proc_of_lambda self [] reg body ~cont
-  | Lambda.Let(lhs, rhs, body) ->
-     instr_of_lambdacode self rhs ~cont:(fun rhs ->
+     proc_of_typedtree self [] reg body ~cont
+  | Typedtree.Let(lhs, rhs, body) ->
+     instr_of_typedtree self rhs ~cont:(fun rhs ->
          let var = fresh_register self in
          match Hashtbl.add self.ctx ~key:lhs ~data:var with
          | `Duplicate -> Message.unreachable "Lower instr_of_lambdacode"
          | `Ok ->
-            instr_of_lambdacode self body ~cont >>| fun body ->
+            instr_of_typedtree self body ~cont >>| fun body ->
             { Anf.ann; instr = Anf.Let(var, rhs, body) }
        )
-  | Lambda.Let_rec(bindings, body) ->
+  | Typedtree.Let_rec(bindings, body) ->
      compile_letrec self bindings ~cont:(fun bindings ->
-         instr_of_lambdacode self body ~cont >>| fun body ->
+         instr_of_typedtree self body ~cont >>| fun body ->
          { Anf.ann; instr = Anf.Let_rec(bindings, body) }
        )
-  | Lambda.Prim op -> cont (Prim op)
-  | Lambda.Ref ->
+  | Typedtree.Prim op -> cont (Prim op)
+  | Typedtree.Ref ->
      let reg = Ir.Register.create_gen () |> Ir.Register.fresh in
      cont (Anf.Fun
              { env = []
              ; params = [reg]
              ; body = make_break self ann (Anf.Ref (Ir.Operand.Register reg)) })
-  | Lambda.Seq(s, t) ->
-     instr_of_lambdacode self s ~cont:(fun s ->
-         instr_of_lambdacode self t ~cont >>| fun t ->
+  | Typedtree.Seq(s, t) ->
+     instr_of_typedtree self s ~cont:(fun s ->
+         instr_of_typedtree self t ~cont >>| fun t ->
          let var = fresh_register self in
          { Anf.ann; instr = Let(var, s, t) }
        )
 
 (** This function implements the compilation of a let-rec expression, as used in
-    [instr_of_lambdacode]. *)
+    [instr_of_typedtree]. *)
 and compile_letrec self bindings ~cont =
   let open Result.Monad_infix in
   List.fold ~f:(fun acc (lhs, rhs) ->
@@ -219,41 +218,42 @@ and compile_letrec self bindings ~cont =
     ) ~init:(Ok []) bindings >>= fun list ->
   let rec f bindings = function
     | (var, temp_var, unused, rhs)::rest ->
-       instr_of_lambdacode self rhs ~cont:(fun opcode ->
+       instr_of_typedtree self rhs ~cont:(fun opcode ->
            f ((var, temp_var, unused, opcode)::bindings) rest
          )
     | [] -> cont bindings
   in f [] list
 
-(** [operand_of_lambdacode self lambda cont] converts [lambda] into an
+(** [operand_of_typedtree self expr cont] converts [expr] into an
     [operand], passes it to the continuation [cont], and returns an [instr]. *)
-and operand_of_lambdacode self lambda ~cont =
+and operand_of_typedtree self typedtree ~cont =
   let open Result.Monad_infix in
-  match lambda.Lambda.expr with
-  | Lambda.Constr(tag, 0) ->
+  match typedtree.Typedtree.expr with
+  | Typedtree.Constr(tag, 0) ->
      let var = fresh_register self in
      cont (Ir.Operand.Register var) >>| fun body ->
-     { Anf.ann = lambda.Lambda.ann
+     { Anf.ann = typedtree.Typedtree.ann
      ; instr = Anf.Let(var, Anf.Box [Ir.Operand.Lit (Literal.Int tag)], body) }
-  | Lambda.Constr(tag, size) ->
+  | Typedtree.Constr(tag, size) ->
      let params = Ir.Register.gen_regs [] size in
      let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
      let proc =
        { Anf.env = []
        ; params
        ; body =
-           make_break self lambda.Lambda.ann
+           make_break self typedtree.Typedtree.ann
              (Anf.Box((Ir.Operand.Lit (Literal.Int tag))::vars)) } in
      let var = fresh_register self in
      cont (Ir.Operand.Register var) >>| fun body ->
-     { Anf.ann = lambda.Lambda.ann; instr = Anf.Let(var, Anf.Fun proc, body) }
-  | Lambda.Extern_var id -> cont (Ir.Operand.Extern_var id)
-  | Lambda.Lit lit -> cont (Ir.Operand.Lit lit)
-  | Lambda.Local_var id ->
+     { Anf.ann = typedtree.Typedtree.ann
+     ; instr = Anf.Let(var, Anf.Fun proc, body) }
+  | Typedtree.Extern_var id -> cont (Ir.Operand.Extern_var id)
+  | Typedtree.Lit lit -> cont (Ir.Operand.Lit lit)
+  | Typedtree.Local_var id ->
      free_var self id >>= fun reg -> cont (Ir.Operand.Register reg)
   | _ ->
-     instr_of_lambdacode self lambda ~cont:(fun rhs ->
+     instr_of_typedtree self typedtree ~cont:(fun rhs ->
          let var = fresh_register self in
          cont (Ir.Operand.Register var) >>| fun body ->
-         { Anf.ann = lambda.Lambda.ann; instr = Anf.Let(var, rhs, body) }
+         { Anf.ann = typedtree.Typedtree.ann; instr = Anf.Let(var, rhs, body) }
        )

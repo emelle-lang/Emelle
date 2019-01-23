@@ -15,9 +15,9 @@ let () =
     Elab.term_of_expr elaborator env ast
     >>= fun term ->
     Typecheck.infer_term typechecker term
-    >>| fun lambda ->
-    Typecheck.gen typechecker lambda.Lambda.ty;
-    lambda.Lambda.ty
+    >>| fun typedtree ->
+    Typecheck.gen typechecker typedtree.Typedtree.ty;
+    typedtree.Typedtree.ty
   with
   | Ok ty ->
      let pprinter = Prettyprint.create () in
