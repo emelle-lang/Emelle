@@ -60,9 +60,11 @@ let rec print_type pp parent_prec ty =
   | Type.Prim Type.Float ->
      Buffer.add_string pp.buffer "Float"
   | Type.Prim Type.Ref ->
-     Buffer.add_string pp.buffer "Ref";
+     Buffer.add_string pp.buffer "Ref"
   | Type.Prim Type.String ->
      Buffer.add_string pp.buffer "String"
+  | Type.Prim Type.Unit ->
+     Buffer.add_string pp.buffer "Unit"
   | Type.Var { ty = Some ty; _ } ->
      print_type pp parent_prec ty
   | Type.Var { id; quant; _ } ->
@@ -111,6 +113,8 @@ let print_lit pp = function
      Buffer.add_string pp.buffer (Int.to_string i)
   | Literal.String str ->
      Buffer.add_string pp.buffer (String.escaped str)
+  | Literal.Unit ->
+     Buffer.add_string pp.buffer "()"
 
 let print_qual_id pp (package, name) =
   Buffer.add_string pp.buffer package;

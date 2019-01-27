@@ -139,7 +139,7 @@ and compile_branch self bindings =
       | `Ok -> Ok (param::params)
     ) ~init:(Ok []) bindings
 
-(** Convert a [Typedtree.expr] into an [instr]. *)
+(** Convert a [Typedtree.t] into an [instr]. *)
 and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
   let open Result.Monad_infix in
   match expr with

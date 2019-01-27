@@ -10,6 +10,7 @@ and 'a pattern =
   | Con of Type.adt * int * 'a t list (** Constructor pattern *)
   | Deref of 'a t
   | Or of 'a t * 'a t
+  | Unit
   | Wild (** Wildcard pattern *)
 
 type 'a row = {
@@ -38,8 +39,7 @@ let swap_column_of_row (idx : int) (row : 'a row) =
   let rec f idx left = function
     | pivot::right when idx = 0 -> Some (left, pivot, right)
     | x::next -> f (idx - 1) (x::left) next
-    | [] -> None
-  in
+    | [] -> None in
   match f idx [] row.patterns with
   | Some (left, pivot, right) ->
      Some { row with patterns = pivot::(List.rev_append left right) }
@@ -55,16 +55,16 @@ let swap_column idx =
 
 type find_adt_result =
   | All_wilds
-  | Adt of Type.adt * int
+  | Found_adt of Type.adt * int
   | Found_ref of int
 
 let find_adt pats =
   let rec f i = function
     | [] -> All_wilds
-    | {node = Con(adt, _, _); _}::_ -> Adt(adt, i)
-    | {node = Deref _; _}::_ -> Found_ref i
-    | {node = Wild; _ }::xs -> f (i + 1) xs
-    | {node = Or(p1, _); _}::pats -> f i (p1::pats)
+    | { node = Con(adt, _, _); _ }::_ -> Found_adt(adt, i)
+    | { node = Deref _; _ }::_ -> Found_ref i
+    | { node = Unit | Wild; _ }::xs -> f (i + 1) xs
+    | { node = Or(p1, _); _ }::pats -> f i (p1::pats)
   in f 0 pats
 
 (** Specialize operation as described in Compiling Pattern Matching to Good
@@ -91,7 +91,7 @@ let rec specialize constr product occurrence rows =
                 ; bindings }::rows)
        | Con _ -> Some rows
        | Deref _ -> None
-       | Wild ->
+       | Unit | Wild ->
           Some ({ row with
                   patterns =
                     fill rest_pats
@@ -124,14 +124,13 @@ let specialize_ref occurrence rows =
        let bindings =
          match id with
          | None -> row.bindings
-         | Some id -> Map.set row.bindings ~key:id ~data:occurrence
-       in
+         | Some id -> Map.set row.bindings ~key:id ~data:occurrence in
        match node with
        | Deref pat->
           Some ({ row with
                   patterns = pat::rest_pats
                 ; bindings }::rows)
-       | Wild ->
+       | Unit | Wild ->
           Some ({ row with
                   patterns = { ann; node = Wild; id = None }::rest_pats
                 ; bindings }::rows)
@@ -151,7 +150,7 @@ let rec default_matrix rows =
        match first_pat.node with
        | Con _ -> Some rows
        | Deref _ -> None
-       | Wild -> Some ({ row with patterns = rest_pats }::rows)
+       | Unit | Wild -> Some ({ row with patterns = rest_pats }::rows)
        | Or(p1, p2) ->
           default_matrix [{ row with patterns = p1::rest_pats }]
           >>= fun mat1 ->
@@ -184,8 +183,7 @@ let swap_occurrences idx occurrences =
   let rec f idx left = function
     | pivot::right when idx = 0 -> Some (left, pivot, right)
     | x::next -> f (idx - 1) (x::left) next
-    | [] -> None
-  in
+    | [] -> None in
   match f idx [] occurrences with
   | Some (left, pivot, right) -> Some (pivot, List.rev_append left right)
   | None -> None
@@ -201,7 +199,7 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
         (* Case 2 *)
         map_ids_to_occs occurrences row >>| fun map ->
         Anf.Leaf(Map.data map, row.action)
-     | Adt(alg, i) ->
+     | Found_adt(alg, i) ->
         (* Case 3 *)
         begin match swap_column i rows with
         | None -> Error Sequence.empty

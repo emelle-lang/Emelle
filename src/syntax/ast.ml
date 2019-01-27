@@ -12,6 +12,7 @@ and 'a monotype' =
   | TInt
   | TRef
   | TNominal of qual_id
+  | TUnit
   | TVar of string
 
 type typevar_decl =
@@ -24,6 +25,7 @@ type 'a pattern = 'a * 'a pattern'
 and 'a pattern' =
   | Con of qual_id * 'a pattern list
   | Deref of 'a pattern
+  | Unit
   | Var of string
   | Wild
 

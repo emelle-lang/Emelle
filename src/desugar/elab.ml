@@ -54,6 +54,11 @@ let rec pattern_of_ast_pattern st map id_opt (ann, node) =
        ; node = Deref pat
        ; id = id_opt }
      , map)
+  | Ast.Unit ->
+     Ok ( { Pattern.ann
+          ; node = Unit
+          ; id = id_opt }
+        , map )
   | Ast.Var name ->
      let id =
        match id_opt with

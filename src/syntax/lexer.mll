@@ -25,7 +25,8 @@
   let uppercase_keywords =
     Hashtbl.of_alist_exn
       (module String)
-      [ "Ref", REF ]
+      [ "Ref", REF
+      ; "Unit", UNIT ]
 }
 
 let whitespace = [' ' '\t']

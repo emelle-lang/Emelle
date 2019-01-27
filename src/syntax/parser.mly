@@ -15,6 +15,7 @@
 %token SELF
 %token THEN
 %token TYPE
+%token UNIT
 %token WITH
 
 %token LPARENS
@@ -119,6 +120,7 @@ let monotype_atom :=
   | x = LIDENT; { ($symbolstartpos, $endpos), (Ast.TVar x) }
   | LPARENS; ARROW; RPARENS; { ($symbolstartpos, $endpos), Ast.TArrow }
   | REF; { ($symbolstartpos, $endpos), Ast.TRef }
+  | UNIT; { ($symbolstartpos, $endpos), Ast.TUnit }
   | LPARENS; ~ = monotype; RPARENS; { monotype }
 
 let expr := expr_kw
@@ -169,6 +171,7 @@ let expr_atom :=
   | i = INT_LIT; { (($symbolstartpos, $endpos), Ast.Lit (Literal.Int i)) }
   | s = STRING_LIT; { (($symbolstartpos, $endpos), Ast.Lit (Literal.String s)) }
   | REF; { (($symbolstartpos, $endpos), Ast.Ref) }
+  | LPARENS; RPARENS; { (($symbolstartpos, $endpos), Ast.Lit Literal.Unit) }
   | LPARENS; e = expr; RPARENS; { e }
 
 let pattern :=
@@ -181,4 +184,5 @@ let pattern_2 :=
   | ~ = qual_uid; { (($symbolstartpos, $endpos), Ast.Con(qual_uid, [])) }
   | id = LIDENT; { (($symbolstartpos, $endpos), Ast.Var id) }
   | UNDERSCORE; { (($symbolstartpos, $endpos), Ast.Wild) }
+  | LPARENS; RPARENS; { (($symbolstartpos, $endpos), Ast.Unit) }
   | LPARENS; pat = pattern; RPARENS; { pat }

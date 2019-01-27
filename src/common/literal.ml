@@ -5,4 +5,5 @@ type t =
   | Float of float
   | Int of int
   | String of string
+  | Unit
 [@@deriving compare, hash, sexp]

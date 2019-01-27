@@ -97,14 +97,13 @@ let tests =
   ; "(k) let k = fun x _ -> x"
   ; "(id, k) let id = fun x -> x let k = fun x _ -> x"
   ; "() let _ = let x = 1 in let y = x in let z = x in z"
-  ; "() type Unit = Unit"
   ; "() type Option a = None | Some a"
   ; "(id2, id) let id = fun x -> x let id2 = id"
   ; "() type Foo = Foo type Bar = Bar Foo"
   ; "() type Bar = Bar Foo and Foo = Foo"
   ; "() type List a = Nil | Cons a (List a)"
   ; "(id, id2) let id = fun x -> x let id2 = id id"
-  ; "() type Unit = Unit let unit = Unit"
+  ; "() let unit = ()"
   ; "() type Option a = None | Some a let return = Some"
   ; "() type Option a = None | Some a let return = fun a -> Some a"
   ; "() type Either e a = Left e | Right a let return = Right"
@@ -256,6 +255,19 @@ let tests =
 
       let _ =
         x := Some 1
+     |}
+  ; {|()
+      type T = C Unit
+
+      let x = C ()
+
+      let C () = x
+     |}
+  ; {|()
+
+      let r = Ref 1
+
+      let () = r := 2
      |} ]
 
 let () =
@@ -383,6 +395,11 @@ let tests =
       let _ =
         x := Some 1;
         x := Some ""
+     |}
+  ; {|()
+      type Option a = None | Some a
+
+      let () = None
      |} ]
 
 let () =

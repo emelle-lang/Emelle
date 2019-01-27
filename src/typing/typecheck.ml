@@ -77,6 +77,7 @@ let rec kind_of_type checker ty =
   | Type.Prim Type.Int -> Ok Kind.Mono
   | Type.Prim Type.Ref -> Ok (Kind.Poly(Kind.Mono, Kind.Mono))
   | Type.Prim Type.String -> Ok Kind.Mono
+  | Type.Prim Type.Unit -> Ok Kind.Mono
   | Type.Var { ty = Some ty; _ } -> kind_of_type checker ty
   | Type.Var { ty = None; kind; _ } -> Ok kind
 
@@ -136,6 +137,7 @@ let rec normalize checker tvars (_, node) =
   | Ast.TFloat -> Ok (Type.Prim Type.Float)
   | Ast.TInt -> Ok (Type.Prim Type.Int)
   | Ast.TRef -> Ok (Type.Prim Type.Ref)
+  | Ast.TUnit -> Ok (Type.Prim Type.Unit)
   | Ast.TNominal path ->
      let ident =
        match path with
@@ -356,6 +358,9 @@ let rec infer_pattern checker map ty pat =
      unify_types checker ty ref_ty >>= fun () ->
      type_binding pat >>= fun map ->
      infer_pattern checker map tvar subpat
+  | Pattern.Unit ->
+     unify_types checker ty (Type.Prim Type.Unit) >>| fun () ->
+     map
   | Pattern.Wild -> type_binding pat
   | Pattern.Or(p1, p2) ->
      infer_pattern checker map ty p1 >>= fun map1 ->
@@ -395,7 +400,7 @@ let rec infer_term checker Term.{ term; ann } =
        (Type.App(Type.Prim Type.Ref, rval.Typedtree.ty)) >>| fun () ->
      make_impure checker rval.Typedtree.ty;
      { Typedtree.ann
-     ; ty = rval.Typedtree.ty
+     ; ty = Type.Prim Type.Unit
      ; expr = Typedtree.Assign(lval, rval) }
 
   | Term.Case(scrutinees, cases) ->
@@ -477,6 +482,7 @@ let rec infer_term checker Term.{ term; ann } =
             | Literal.Float _ -> Type.Prim Type.Float
             | Literal.Int _ -> Type.Prim Type.Int
             | Literal.String _ -> Type.Prim Type.String
+            | Literal.Unit -> Type.Prim Type.Unit
             end
         ; expr = Typedtree.Lit lit }
 
@@ -497,6 +503,7 @@ let rec infer_term checker Term.{ term; ann } =
 
   | Term.Seq(s, t) ->
      infer_term checker s >>= fun s ->
+     unify_types checker s.Typedtree.ty (Type.Prim Type.Unit) >>= fun () ->
      infer_term checker t >>| fun t ->
      { Typedtree.ann; ty = t.Typedtree.ty; expr = Typedtree.Seq(s, t) }
 
@@ -506,7 +513,7 @@ let rec infer_term checker Term.{ term; ann } =
         Ok { Typedtree.ann
            ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
            ; expr = Typedtree.Local_var id }
-     | None -> Error (Sequence.return (Message.Unreachable "Tc expr var"))
+     | None -> Message.unreachable "Tc expr var"
 
 and infer_branch checker scruts pats =
   let open Result.Monad_infix in

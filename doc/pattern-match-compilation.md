@@ -25,6 +25,7 @@ decision tree is as follows:
   operation, then compute the decision tree of the specialized matrix.
 - Find the default matrix.
 - The `Ref` pattern is like a one-argument constructor pattern that cannot fail.
+- The `()` pattern is like a wildcard.
 
 ## Matrix specialization
 

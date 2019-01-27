@@ -52,7 +52,7 @@ let valid_monotypes =
   ; "Option a"
   ; "Either a b"
   ; "Either foo bar"
-  ; "IO unit"
+  ; "IO Unit"
   ; "Unit"
   ; "a' b' c'"
   ]
@@ -71,8 +71,6 @@ let invalid_monotypes =
 let valid_adts =
   [ "Void ="
   ; "Void = |"
-  ; "Unit = Unit"
-  ; "Unit = | Unit"
   ; "Option a = Some a | None"
   ; "List a = | Cons a * List a | Nil"
   ; "Bool = False | True"
@@ -83,7 +81,6 @@ let valid_adts =
 let invalid_adts =
   [ ""
   ; "= "
-  ; "= Unit"
   ; "X = Y |"
   ; "x = Y"
   ; "TupleSyntaxNotSupported a b = Foo (a, b)"

@@ -12,6 +12,7 @@ type prim =
   | Int
   | Ref
   | String
+  | Unit
 [@@deriving compare, sexp]
 
 (** Type [quant] describes whether a type variable is existentially quantified
