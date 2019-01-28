@@ -48,4 +48,5 @@ and 'a proc = {
     env : (register * operand) list; (** The captured variables *)
     params : register list;
     body : 'a instr;
+    reg_gen : Ir.Register.gen;
   }

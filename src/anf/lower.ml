@@ -65,7 +65,8 @@ let rec proc_of_typedtree self params id body ~cont =
         instr_of_typedtree self body ~cont:(fun opcode ->
             cont (Anf.Fun { env = Queue.to_list self.free_vars
                           ; params = List.rev (reg::params)
-                          ; body = make_break self body.Typedtree.ann opcode }))
+                          ; body = make_break self body.Typedtree.ann opcode
+                          ; reg_gen = self.reg_gen }))
 
 (** Combine curried one-argument applications into a function call with all the
     arguments. *)
@@ -84,8 +85,9 @@ and flatten_app self count args f x ~cont =
            (* Handle a partially applied data constructor by generating a
               closure *)
            let env = List.map ~f:(fun op -> (fresh_register self, op)) args in
+           let reg_gen = Ir.Register.create_gen () in
            (* Closure parameters *)
-           let params = Ir.Register.gen_regs [] (fields - count) in
+           let params = Ir.Register.gen_regs reg_gen [] (fields - count) in
            (* Operand list of the parameters *)
            let regs_of_params =
              List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
@@ -99,7 +101,8 @@ and flatten_app self count args f x ~cont =
              { Anf.env
              ; params
              ; body =
-                 make_break self f.Typedtree.ann (Anf.Box(tag, box_contents)) }
+                 make_break self f.Typedtree.ann (Anf.Box(tag, box_contents))
+             ; reg_gen } (* TODO change this *)
            in Anf.Fun proc
        )
   | Typedtree.Ref ->
@@ -189,11 +192,13 @@ and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
        )
   | Typedtree.Prim op -> cont (Prim op)
   | Typedtree.Ref ->
-     let reg = Ir.Register.create_gen () |> Ir.Register.fresh in
+     let reg_gen = Ir.Register.create_gen () in
+     let reg = Ir.Register.fresh reg_gen in
      cont (Anf.Fun
              { env = []
              ; params = [reg]
-             ; body = make_break self ann (Anf.Ref (Ir.Operand.Register reg)) })
+             ; body = make_break self ann (Anf.Ref (Ir.Operand.Register reg))
+             ; reg_gen })
   | Typedtree.Seq(s, t) ->
      instr_of_typedtree self s ~cont:(fun s ->
          instr_of_typedtree self t ~cont >>| fun t ->
@@ -234,13 +239,15 @@ and operand_of_typedtree self typedtree ~cont =
      { Anf.ann = typedtree.Typedtree.ann
      ; instr = Anf.Let(var, Anf.Box(tag, []), body) }
   | Typedtree.Constr(tag, size) ->
-     let params = Ir.Register.gen_regs [] size in
+     let reg_gen = Ir.Register.create_gen () in
+     let params = Ir.Register.gen_regs reg_gen [] size in
      let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
      let proc =
        { Anf.env = []
        ; params
        ; body =
-           make_break self typedtree.Typedtree.ann (Anf.Box(tag, vars)) } in
+           make_break self typedtree.Typedtree.ann (Anf.Box(tag, vars))
+       ; reg_gen } in
      let var = fresh_register self in
      cont (Ir.Operand.Register var) >>| fun body ->
      { Anf.ann = typedtree.Typedtree.ann

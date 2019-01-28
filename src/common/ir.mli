@@ -29,7 +29,9 @@ module Register : sig
 
   val fresh : gen -> t
 
-  val gen_regs : t list -> int -> t list
+  (** [gen_regs gen acc_init count] appends a list of [count] fresh registers
+      onto [acc_init] using [gen] *)
+  val gen_regs : gen -> t list -> int -> t list
 
   val to_string : t -> string
 end

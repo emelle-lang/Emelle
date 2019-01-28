@@ -27,9 +27,13 @@ end
 module Register = struct
   include IntId
 
-  let rec gen_regs list = function
-    | 0 -> list
-    | n -> gen_regs ((n - 1)::list) (n - 1)
+  let gen_regs gen init count =
+    let offset = !gen in
+    gen := offset + count;
+    let rec go acc = function
+      | 0 -> acc
+      | n -> go ((offset + n - 1)::acc) (n - 1)
+    in go init count
 
   let to_string r = "r"^(Int.to_string r)
 end
