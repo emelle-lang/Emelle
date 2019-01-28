@@ -31,7 +31,7 @@ let export self env type_env Ast.{ ann; exports; _ } =
                | None -> Error (Sequence.return (Message.Reexported_name name))
     ) ~init:(Ok (0, [])) exports
   >>| fun (_, operands) ->
-  Lower.make_break self.lowerer ann (Anf.Box (List.rev operands))
+  Lower.make_break self.lowerer ann (Anf.Box (0, List.rev operands))
 
 let compile_package self env ast_file =
   let open Result.Monad_infix in

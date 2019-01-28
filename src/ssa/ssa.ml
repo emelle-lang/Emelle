@@ -11,7 +11,7 @@ type jump =
 
 type opcode =
   | Assign of operand * operand
-  | Box of operand list
+  | Box of int * operand list
   | Box_dummy of int
   | Call of operand * operand * operand list
   | Deref of operand
@@ -22,6 +22,7 @@ type opcode =
   | Phi of int
   | Prim of string
   | Ref of operand
+  | Tag of operand
 
 type instr = {
     dest : Ir.Register.t;

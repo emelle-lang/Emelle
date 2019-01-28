@@ -50,7 +50,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
      block.Ssa.preds <- Set.add block.Ssa.preds this_label;
      Ok (Ssa.Break(branch_idx, operands))
   | Anf.Switch(tag_reg, occ, trees, else_tree) ->
-     Queue.enqueue instrs { Ssa.dest = tag_reg; opcode = Get(occ, 0) };
+     Queue.enqueue instrs { Ssa.dest = tag_reg; opcode = Tag occ };
      let%bind cases =
        Map.fold trees ~init:(Ok []) ~f: begin
            fun ~key:case ~data:(regs, tree) acc ->
@@ -61,7 +61,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
                let%map jump =
                  List.iteri ~f:(fun idx reg ->
                      Queue.enqueue case_instrs
-                       { Ssa.dest = reg; opcode = Get(occ, idx + 1) }
+                       { Ssa.dest = reg; opcode = Get(occ, idx) }
                    ) regs;
                  compile_decision_tree ctx case_instrs case_idx branches tree
                in
@@ -90,7 +90,7 @@ let rec compile_opcode ctx anf ~cont
   let open Result.Let_syntax in
   match anf with
   | Anf.Assign(lval, rval) -> cont ctx (Ssa.Assign(lval, rval))
-  | Anf.Box contents -> cont ctx (Ssa.Box contents)
+  | Anf.Box(tag, contents) -> cont ctx (Ssa.Box(tag, contents))
   | Anf.Call(f, arg, args) -> cont ctx (Ssa.Call(f, arg, args))
   | Anf.Case(tree, join_points) ->
      let%map result, _ =
@@ -170,7 +170,7 @@ and compile_instr ctx anf
            let%bind () = acc in
            let%map size =
              match def with
-             | Anf.Box list -> Ok (List.length list)
+             | Anf.Box(_, list) -> Ok (List.length list)
              | Anf.Fun proc -> Ok (List.length proc.Anf.env + 1)
              | _ -> Error (Sequence.return Message.Unsafe_let_rec) in
            Queue.enqueue ctx.instrs

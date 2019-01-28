@@ -32,9 +32,9 @@ let compile_instr coloring { Ssa2.dest; opcode; _ } =
         let%bind lval = compile_operand coloring lval in
         let%map rval = compile_operand coloring rval in
         Opcode (Asm.Assign(dest, lval, rval))
-     | Ssa.Box operands ->
+     | Ssa.Box(tag, operands) ->
         let%map operands = compile_operands coloring operands in
-        Opcode (Asm.Box(dest, operands))
+        Opcode (Asm.Box(dest, tag, operands))
      | Ssa.Box_dummy i -> Ok (Opcode (Asm.Box_dummy(dest, i)))
      | Ssa.Call(f, arg, args) ->
         let%bind f = compile_operand coloring f in
@@ -62,6 +62,9 @@ let compile_instr coloring { Ssa2.dest; opcode; _ } =
      | Ssa.Ref operand ->
         let%map operand = compile_operand coloring operand in
         Opcode (Asm.Ref(dest, operand))
+     | Ssa.Tag operand ->
+        let%map operand = compile_operand coloring operand in
+        Opcode (Asm.Tag(dest, operand))
 
 let rec compile_basic_block new_blocks coloring proc label =
   let open Result.Let_syntax in

@@ -9,7 +9,7 @@ type operand =
 
 type instr =
   | Assign of address * operand * operand
-  | Box of address * operand list
+  | Box of address * int * operand list
   | Box_dummy of address * int
   | Call of address * operand * operand * operand list
   | Deref of address * operand
@@ -19,6 +19,7 @@ type instr =
   | Memcopy of address * operand * operand
   | Prim of address * string
   | Ref of address * operand
+  | Tag of address * operand
   | Break of Ir.Label.t
   | Fail
   | Return of operand

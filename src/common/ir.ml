@@ -21,7 +21,7 @@ end
 module Label = struct
   include IntId
 
-  let to_string = Int.to_string
+  let to_string l = "L"^(Int.to_string l)
 end
 
 module Register = struct
@@ -31,7 +31,7 @@ module Register = struct
     | 0 -> list
     | n -> gen_regs ((n - 1)::list) (n - 1)
 
-  let to_string = Int.to_string
+  let to_string r = "r"^(Int.to_string r)
 end
 
 module Operand = struct

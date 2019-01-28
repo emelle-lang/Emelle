@@ -21,7 +21,7 @@ type decision_tree =
 
 type 'a opcode =
   | Assign of operand * operand
-  | Box of operand list
+  | Box of int * operand list
   | Call of operand * operand * operand list
     (** proc, first arg, rest args *)
   | Case of decision_tree * 'a join_point list

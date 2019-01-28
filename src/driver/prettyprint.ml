@@ -130,7 +130,6 @@ let rec print_comma_sep f pp = function
      print_comma_sep f pp xs
 
 let print_label pp label =
-  Buffer.add_char pp.buffer 'L';
   Buffer.add_string pp.buffer (Ir.Label.to_string label)
 
 let print_procname pp name =
@@ -139,7 +138,6 @@ let print_procname pp name =
 
 module Ssa = struct
   let print_reg pp reg =
-    Buffer.add_string pp.buffer "r%";
     Buffer.add_string pp.buffer (Ir.Register.to_string reg)
 
   let print_operand pp = function
@@ -179,8 +177,10 @@ module Ssa = struct
        print_operand pp lval;
        Buffer.add_char pp.buffer ' ';
        print_operand pp rval
-    | Ssa.Box items ->
-       Buffer.add_string pp.buffer "box [";
+    | Ssa.Box(tag, items) ->
+       Buffer.add_string pp.buffer "box ";
+       Buffer.add_string pp.buffer (Int.to_string tag);
+       Buffer.add_string pp.buffer " [";
        print_comma_sep print_operand pp items;
        Buffer.add_char pp.buffer ']'
     | Ssa.Box_dummy size ->
@@ -230,6 +230,9 @@ module Ssa = struct
        Buffer.add_string pp.buffer (String.escaped str)
     | Ssa.Ref op ->
        Buffer.add_string pp.buffer "ref ";
+       print_operand pp op
+    | Ssa.Tag op ->
+       Buffer.add_string pp.buffer "tag ";
        print_operand pp op
 
   let print_instr pp Ssa.{ dest; opcode; _ } =
@@ -282,7 +285,7 @@ end
 
 module Asm = struct
   let print_addr pp addr =
-    Buffer.add_string pp.buffer @@ Int.to_string addr
+    Buffer.add_string pp.buffer @@ "%"^(Int.to_string addr)
 
   let print_operand pp = function
     | Asm.Extern_var path -> print_qual_id pp path
@@ -301,9 +304,11 @@ module Asm = struct
   let print_instr pp = function
     | Asm.Assign(dest, lval, rval) ->
        print_instr_args pp "assign" dest [lval; rval]
-    | Asm.Box(dest, operands) ->
+    | Asm.Box(dest, tag, operands) ->
        Buffer.add_string pp.buffer "box ";
        print_addr pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer (Int.to_string tag);
        Buffer.add_string pp.buffer " [";
        print_comma_sep print_operand pp operands;
        Buffer.add_char pp.buffer ']'
@@ -341,6 +346,8 @@ module Asm = struct
        Buffer.add_string pp.buffer @@ String.escaped primop
     | Asm.Ref(dest, value) ->
        print_instr_args pp "ref" dest [value]
+    | Asm.Tag(dest, op) ->
+       print_instr_args pp "tag" dest [op]
     | Asm.Break label ->
        Buffer.add_string pp.buffer "break ";
        print_label pp label

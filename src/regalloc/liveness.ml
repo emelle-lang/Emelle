@@ -2,7 +2,7 @@ open Base
 
 let operands_of_opcode = function
   | Ssa.Assign(lval, rval) -> [lval; rval]
-  | Ssa.Box list -> list
+  | Ssa.Box(_, list) -> list
   | Ssa.Box_dummy _ -> []
   | Ssa.Call(f, arg, args) -> f::arg::args
   | Ssa.Deref op -> [op]
@@ -13,6 +13,7 @@ let operands_of_opcode = function
   | Ssa.Phi _ -> []
   | Ssa.Prim _ -> []
   | Ssa.Ref op -> [op]
+  | Ssa.Tag op -> [op]
 
 let operands_of_jump = function
   | Ssa.Break(_, args) -> args

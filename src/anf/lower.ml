@@ -79,7 +79,7 @@ and flatten_app self count args f x ~cont =
      let args = x::args in
      cont (
          if fields = count then
-           Anf.Box ((Ir.Operand.Lit (Literal.Int tag))::args)
+           Anf.Box (tag, args)
          else
            (* Handle a partially applied data constructor by generating a
               closure *)
@@ -94,13 +94,12 @@ and flatten_app self count args f x ~cont =
            let free_var_regs =
              List.map ~f:(fun (reg, _) -> Ir.Operand.Register reg) env in
            (* The final operands of the box opcode *)
-           let box_contents =
-             (Ir.Operand.Lit (Literal.Int tag))::
-               (List.append free_var_regs regs_of_params) in
+           let box_contents = List.append free_var_regs regs_of_params in
            let proc =
              { Anf.env
              ; params
-             ; body = make_break self f.Typedtree.ann (Anf.Box box_contents) }
+             ; body =
+                 make_break self f.Typedtree.ann (Anf.Box(tag, box_contents)) }
            in Anf.Fun proc
        )
   | Typedtree.Ref ->
@@ -233,7 +232,7 @@ and operand_of_typedtree self typedtree ~cont =
      let var = fresh_register self in
      cont (Ir.Operand.Register var) >>| fun body ->
      { Anf.ann = typedtree.Typedtree.ann
-     ; instr = Anf.Let(var, Anf.Box [Ir.Operand.Lit (Literal.Int tag)], body) }
+     ; instr = Anf.Let(var, Anf.Box(tag, []), body) }
   | Typedtree.Constr(tag, size) ->
      let params = Ir.Register.gen_regs [] size in
      let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
@@ -241,8 +240,7 @@ and operand_of_typedtree self typedtree ~cont =
        { Anf.env = []
        ; params
        ; body =
-           make_break self typedtree.Typedtree.ann
-             (Anf.Box((Ir.Operand.Lit (Literal.Int tag))::vars)) } in
+           make_break self typedtree.Typedtree.ann (Anf.Box(tag, vars)) } in
      let var = fresh_register self in
      cont (Ir.Operand.Register var) >>| fun body ->
      { Anf.ann = typedtree.Typedtree.ann
