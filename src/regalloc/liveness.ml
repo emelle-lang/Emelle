@@ -6,7 +6,6 @@ let operands_of_opcode = function
   | Ssa.Box_dummy _ -> []
   | Ssa.Call(f, arg, args) -> f::arg::args
   | Ssa.Deref op -> [op]
-  | Ssa.Fun(_, captures) -> captures
   | Ssa.Get(op, _) -> [op]
   | Ssa.Load op -> [op]
   | Ssa.Memcopy(dest, src) -> [dest; src]

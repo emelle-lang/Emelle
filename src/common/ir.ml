@@ -40,3 +40,5 @@ module Operand = struct
     | Lit of Literal.t
     | Register of Register.t
 end
+
+let function_tag = 250

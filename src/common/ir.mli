@@ -40,3 +40,6 @@ module Operand : sig
     | Lit of Literal.t
     | Register of Register.t
 end
+
+(** The tag of a function box, whose first field is the function *)
+val function_tag : int

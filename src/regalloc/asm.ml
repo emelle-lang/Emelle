@@ -13,7 +13,6 @@ type instr =
   | Box_dummy of address * int
   | Call of address * operand * operand * operand list
   | Deref of address * operand
-  | Fun of address * int * operand list
   | Get of address * operand * int
   | Move of address * operand
   | Memcopy of address * operand * operand

@@ -15,7 +15,6 @@ type opcode =
   | Box_dummy of int
   | Call of operand * operand * operand list
   | Deref of operand
-  | Fun of int * operand list
   | Get of operand * int
   | Load of operand
   | Memcopy of operand * operand

@@ -148,7 +148,8 @@ let rec compile_opcode ctx anf ~cont
      ctx.proc_gen := idx + 1;
      let procs = Map.set !(ctx.procs) ~key:idx ~data:proc in
      ctx.procs := procs;
-     cont ctx (Ssa.Fun(idx, env))
+     cont ctx
+       (Ssa.Box(Ir.function_tag, (Ir.Operand.Lit (Literal.Int idx))::env))
   | Anf.Load o -> cont ctx (Ssa.Load o)
   | Anf.Prim p -> cont ctx (Ssa.Prim p)
   | Anf.Ref x -> cont ctx (Ssa.Ref x)

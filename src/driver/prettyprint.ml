@@ -200,15 +200,6 @@ module Ssa = struct
     | Ssa.Deref op ->
        Buffer.add_string pp.buffer "deref ";
        print_operand pp op
-    | Ssa.Fun(f, captures) ->
-       Buffer.add_string pp.buffer "closure ";
-       print_procname pp f;
-       Buffer.add_string pp.buffer " [";
-       List.iter ~f:(fun capture ->
-           print_operand pp capture;
-           Buffer.add_string pp.buffer "; ";
-         ) captures;
-       Buffer.add_char pp.buffer ']'
     | Ssa.Get(op, idx) ->
        Buffer.add_string pp.buffer "get ";
        print_operand pp op;
@@ -324,13 +315,6 @@ module Asm = struct
        Buffer.add_char pp.buffer ')';
     | Asm.Deref(dest, ptr) ->
        print_instr_args pp "deref" dest [ptr]
-    | Asm.Fun(dest, procname, captures) ->
-       print_instr_args pp "closure" dest [];
-       Buffer.add_char pp.buffer ' ';
-       print_procname pp procname;
-       Buffer.add_char pp.buffer '(';
-       print_comma_sep print_operand pp captures;
-       Buffer.add_char pp.buffer ')'
     | Asm.Get(dest, value, idx) ->
        print_instr_args pp "get" dest [value];
        Buffer.add_char pp.buffer ' ';

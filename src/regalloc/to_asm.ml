@@ -44,9 +44,6 @@ let compile_instr coloring { Ssa2.dest; opcode; _ } =
      | Ssa.Deref operand ->
         let%map operand = compile_operand coloring operand in
         Opcode (Asm.Deref(dest, operand))
-     | Ssa.Fun(f_idx, captures) ->
-        let%map captures = compile_operands coloring captures in
-        Opcode (Asm.Fun(dest, f_idx, captures))
      | Ssa.Get(operand, idx) ->
         let%map operand = compile_operand coloring operand in
         Opcode (Asm.Get(dest, operand, idx))
