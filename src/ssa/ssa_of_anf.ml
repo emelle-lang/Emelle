@@ -168,7 +168,7 @@ and compile_instr ctx anf
      (* Initialize registers with dummy allocations *)
      let%bind () =
        List.fold_left bindings ~init:(Ok ()) ~f:begin
-           fun acc (reg, _, _, def) ->
+           fun acc (reg, def) ->
            let%bind () = acc in
            let%map size =
              match def with
@@ -181,7 +181,9 @@ and compile_instr ctx anf
      (* Accumulator is a function *)
      List.fold_right bindings ~init:(fun ctx ->
          compile_instr ctx next
-       ) ~f:(fun (reg, temp, unused, op) acc ctx ->
+       ) ~f:(fun (reg, op) acc ctx ->
+         let temp = Ir.Register.fresh ctx.reg_gen in
+         let unused = Ir.Register.fresh ctx.reg_gen in
          compile_opcode ctx op ~cont:(fun ctx op ->
              (* Evaluate the let-rec binding RHS *)
              Queue.enqueue ctx.instrs { Ssa.dest = temp; opcode = op };

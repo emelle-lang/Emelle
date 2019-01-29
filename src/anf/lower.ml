@@ -213,17 +213,15 @@ and compile_letrec self bindings ~cont =
   List.fold ~f:(fun acc (lhs, rhs) ->
       acc >>= fun list ->
       let var = fresh_register self in
-      let temp_var = fresh_register self in
-      let unused_reg = fresh_register self in
       match Hashtbl.add self.ctx ~key:lhs ~data:var with
       | `Duplicate ->
          Error (Sequence.return (Message.Unreachable "Bytecode comp letrec"))
-      | `Ok -> Ok ((var, temp_var, unused_reg, rhs)::list)
+      | `Ok -> Ok ((var, rhs)::list)
     ) ~init:(Ok []) bindings >>= fun list ->
   let rec f bindings = function
-    | (var, temp_var, unused, rhs)::rest ->
+    | (var, rhs)::rest ->
        instr_of_typedtree self rhs ~cont:(fun opcode ->
-           f ((var, temp_var, unused, opcode)::bindings) rest
+           f ((var, opcode)::bindings) rest
          )
     | [] -> cont bindings
   in f [] list
