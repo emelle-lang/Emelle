@@ -136,7 +136,7 @@ let compile_proc coloring proc =
   let%map blocks, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
   { Asm.free_vars; params; blocks; frame_size = coloring.Color.frame_size }
 
-let compile_package { Color.colorings; main's_coloring } package =
+let compile { Color.colorings; main's_coloring } package =
   let open Result.Let_syntax in
   let%bind procs =
     Map.fold package.Ssa2.procs ~init:(Ok (Map.empty (module Int)))

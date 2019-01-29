@@ -33,6 +33,7 @@ type 'a item =
 
 type 'a file = {
     top_ann : 'a;
+    exports : string list;
     env : (string, Ident.t, String.comparator_witness) Env.t;
     items : 'a item list;
   }

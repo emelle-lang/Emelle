@@ -36,7 +36,7 @@ type proc = {
     frame_size : int;
   }
 
-type package = {
+type file = {
     procs : (int, proc, Int.comparator_witness) Map.t;
     main : proc;
   }

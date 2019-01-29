@@ -14,6 +14,7 @@ type t = {
       (Ir.Label.t, Ssa.basic_block, Ir.Label.comparator_witness) Map.t ref;
     label_gen : Ir.Label.gen;
     proc_gen : int ref;
+    reg_gen : Ir.Register.gen;
     instrs : Ssa.instr Queue.t;
     curr_block : Ir.Label.t;
     jump_dest : jump_dest;
@@ -209,6 +210,7 @@ and compile_proc ctx proc =
       blocks
     ; instrs
     ; label_gen
+    ; reg_gen = proc.Anf.reg_gen
     ; curr_block = entry_label
     ; jump_dest = Return } in
   let%map before_return, jump = compile_instr state proc.Anf.body in
@@ -232,9 +234,10 @@ let compile_package anf =
     ; instrs = Queue.create ()
     ; proc_gen = ref 0
     ; label_gen
+    ; reg_gen = anf.Anf.reg_gen
     ; curr_block = entry_label
     ; jump_dest = Return } in
-  let%map before_return, jump = compile_instr ctx anf in
+  let%map before_return, jump = compile_instr ctx anf.Anf.top_instr in
   let entry_block =
     { Ssa.preds = Set.empty (module Ir.Label)
     ; instrs = ctx.instrs

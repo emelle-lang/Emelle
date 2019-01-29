@@ -262,3 +262,46 @@ and operand_of_typedtree self typedtree ~cont =
          cont (Ir.Operand.Register var) >>| fun body ->
          { Anf.ann = typedtree.Typedtree.ann; instr = Anf.Let(var, rhs, body) }
        )
+
+let compile
+      (package : Package.t)
+      { Typedtree.top_ann; exports; items; env; typing_ctx; _ } =
+  let open Result.Monad_infix in
+  let lowerer = create None in
+  let rec loop = function
+    | Typedtree.Top_let(scruts, bindings, matrix)::rest ->
+       compile_case lowerer scruts matrix
+         ~cont:(fun tree ->
+           compile_branch lowerer bindings >>= fun params ->
+           loop rest >>| fun body ->
+           make_break lowerer top_ann (Anf.Case(tree, [params, body]))
+         )
+    | Typedtree.Top_let_rec(bindings)::rest ->
+       compile_letrec lowerer bindings ~cont:(fun bindings ->
+           loop rest >>| fun body ->
+           { Anf.ann = top_ann
+           ; instr = Anf.Let_rec(bindings, body) }
+         )
+    | [] ->
+       List.fold ~f:(fun acc name ->
+           acc >>= fun (i, list) ->
+           match Env.find env name with
+           | None ->
+              Error (Sequence.return
+                       (Message.Unresolved_path (Ast.Internal name)))
+           | Some id ->
+              match Hashtbl.find typing_ctx id with
+              | None -> Message.unreachable "Pipeline export 1"
+              | Some ty ->
+                 match Hashtbl.find lowerer.ctx id with
+                 | None -> Message.unreachable "Pipeline export 2"
+                 | Some reg ->
+                    match Package.add_val package name ty i with
+                    | Some () -> Ok (i + 1, (Ir.Operand.Register reg)::list)
+                    | None ->
+                       Error (Sequence.return (Message.Reexported_name name))
+         ) ~init:(Ok (0, [])) exports
+       >>| fun (_, operands) ->
+       make_break lowerer top_ann (Anf.Box (0, List.rev operands)) in
+  loop items >>| fun instr ->
+  { Anf.top_instr = instr; reg_gen = lowerer.reg_gen }

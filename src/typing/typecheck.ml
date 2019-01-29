@@ -582,4 +582,6 @@ let typecheck typechecker term_file =
   >>| fun items ->
   { Typedtree.top_ann = term_file.Term.top_ann
   ; items = List.rev items
-  ; env = typechecker.env }
+  ; exports = term_file.Term.exports
+  ; env = term_file.Term.env
+  ; typing_ctx = typechecker.env }

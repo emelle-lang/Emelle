@@ -31,5 +31,7 @@ type 'a item =
 type 'a file = {
     top_ann : 'a;
     items : 'a item list;
-    env : (Ident.t, Type.t) Hashtbl.t
+    exports : string list;
+    env : (string, Ident.t, String.comparator_witness) Env.t;
+    typing_ctx : (Ident.t, Type.t) Hashtbl.t
   }

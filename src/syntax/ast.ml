@@ -45,17 +45,19 @@ and 'a expr' =
   | Var of qual_id
 and 'a lambda_case = 'a pattern * 'a pattern list * 'a expr
 
-type 'a adt =
-  { name : string
-  ; typeparams : string list
-  ; constrs : (string * 'a monotype list) list }
+type 'a adt = {
+    name : string;
+    typeparams : string list;
+    constrs : (string * 'a monotype list) list
+  }
 
 type 'a item =
   | Let of ('a pattern * 'a expr) list
   | Let_rec of (string * 'a expr) list
   | Type of 'a adt * 'a adt list
 
-type 'a file =
-  { ann : 'a
-  ; exports : string list
-  ; items : 'a item list }
+type 'a file = {
+    ann : 'a;
+    exports : string list;
+    items : 'a item list
+  }

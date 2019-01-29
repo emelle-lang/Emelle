@@ -302,5 +302,6 @@ let elab typechecker env package packages ast_file =
     ) ~init:(Ok (env, [])) ast_file.Ast.items
   >>| fun (env, list) ->
   { Term.top_ann = ast_file.Ast.ann
+  ; exports = ast_file.Ast.exports
   ; env = env
   ; items = List.rev list }

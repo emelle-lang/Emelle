@@ -21,7 +21,7 @@ type proc = {
     before_return : Ir.Label.t;
   }
 
-type package = {
+type file = {
     procs : (int, proc, Int.comparator_witness) Map.t;
     main : proc
   }

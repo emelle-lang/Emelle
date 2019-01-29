@@ -50,3 +50,8 @@ and 'a proc = {
     body : 'a instr;
     reg_gen : Ir.Register.gen;
   }
+
+type 'a file = {
+    top_instr : 'a instr;
+    reg_gen : Ir.Register.gen;
+  }
