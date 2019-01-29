@@ -15,7 +15,7 @@ type instr =
   | Deref of address * operand
   | Get of address * operand * int
   | Move of address * operand
-  | Memcopy of address * operand * operand
+  | Memcopy of operand * operand
   | Prim of address * string
   | Ref of address * operand
   | Tag of address * operand

@@ -2,6 +2,8 @@ open Base
 
 type operand = Anf.operand
 
+type register = Ir.Register.t
+
 type jump =
   | Break of Ir.Label.t * operand list (** Break to a basic block *)
   | Fail (** Pattern match failure *)
@@ -9,24 +11,19 @@ type jump =
   | Switch of operand * (int * Ir.Label.t) list * Ir.Label.t
       (** The jump is dynamic *)
 
-type opcode =
-  | Assign of operand * operand
-  | Box of int * operand list
-  | Box_dummy of int
-  | Call of operand * operand * operand list
-  | Deref of operand
-  | Get of operand * int
-  | Load of operand
+type instr =
+  | Assign of register * operand * operand
+  | Box of register * int * operand list
+  | Box_dummy of register * int
+  | Call of register * operand * operand * operand list
+  | Deref of register * operand
+  | Get of register * operand * int
+  | Load of register * operand
   | Memcopy of operand * operand
-  | Phi of int
-  | Prim of string
-  | Ref of operand
-  | Tag of operand
-
-type instr = {
-    dest : Ir.Register.t;
-    opcode : opcode;
-  }
+  | Phi of register * int
+  | Prim of register * string
+  | Ref of register * operand
+  | Tag of register * operand
 
 type basic_block = {
     mutable preds : (Ir.Label.t, Ir.Label.comparator_witness) Set.t;

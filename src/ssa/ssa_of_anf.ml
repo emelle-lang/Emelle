@@ -43,7 +43,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
   let open Result.Let_syntax in
   function
   | Anf.Deref(occ, dest, tree) ->
-     Queue.enqueue instrs { Ssa.dest = dest; opcode = Deref occ };
+     Queue.enqueue instrs (Ssa.Deref(dest, occ));
      compile_decision_tree ctx instrs this_label branches tree
   | Anf.Fail -> Ok Ssa.Fail
   | Anf.Leaf(operands, idx) ->
@@ -51,7 +51,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
      block.Ssa.preds <- Set.add block.Ssa.preds this_label;
      Ok (Ssa.Break(branch_idx, operands))
   | Anf.Switch(tag_reg, occ, trees, else_tree) ->
-     Queue.enqueue instrs { Ssa.dest = tag_reg; opcode = Tag occ };
+     Queue.enqueue instrs (Tag(tag_reg, occ));
      let%bind cases =
        Map.fold trees ~init:(Ok []) ~f: begin
            fun ~key:case ~data:(regs, tree) acc ->
@@ -61,8 +61,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
                let case_instrs = Queue.create () in
                let%map jump =
                  List.iteri ~f:(fun idx reg ->
-                     Queue.enqueue case_instrs
-                       { Ssa.dest = reg; opcode = Get(occ, idx) }
+                     Queue.enqueue case_instrs (Ssa.Get(reg, occ, idx))
                    ) regs;
                  compile_decision_tree ctx case_instrs case_idx branches tree
                in
@@ -86,13 +85,19 @@ let rec compile_decision_tree ctx instrs this_label branches =
          )
      in Ssa.Switch(Ir.Operand.Register tag_reg, cases, else_block_idx)
 
-let rec compile_opcode ctx anf ~cont
+let rec compile_opcode ctx dest anf ~cont
         : (Ir.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
   let open Result.Let_syntax in
   match anf with
-  | Anf.Assign(lval, rval) -> cont ctx (Ssa.Assign(lval, rval))
-  | Anf.Box(tag, contents) -> cont ctx (Ssa.Box(tag, contents))
-  | Anf.Call(f, arg, args) -> cont ctx (Ssa.Call(f, arg, args))
+  | Anf.Assign(lval, rval) ->
+     Queue.enqueue ctx.instrs (Ssa.Assign(dest, lval, rval));
+     cont ctx
+  | Anf.Box(tag, contents) ->
+     Queue.enqueue ctx.instrs (Ssa.Box(dest, tag, contents));
+     cont ctx
+  | Anf.Call(f, arg, args) ->
+     Queue.enqueue ctx.instrs (Ssa.Call(dest, f, arg, args));
+     cont ctx
   | Anf.Case(tree, join_points) ->
      let%map result, _ =
        (* The basic block for the case expr confluent basic block *)
@@ -107,8 +112,7 @@ let rec compile_opcode ctx anf ~cont
                    fresh_block ctx ~cont:(fun branch_idx ->
                        let branch_instrs = Queue.create () in
                        List.iteri reg_args ~f:(fun i reg_arg ->
-                           Queue.enqueue branch_instrs
-                             { Ssa.dest = reg_arg; opcode = Phi i };
+                           Queue.enqueue branch_instrs (Ssa.Phi(reg_arg, i));
                          );
                        let%map label, jump =
                          compile_instr
@@ -133,10 +137,10 @@ let rec compile_opcode ctx anf ~cont
                  Set.add acc label
                ) in
            (* Label of confluent block, jump of confluent block *)
+           Queue.enqueue confl_instrs (Ssa.Phi(dest, 0));
            let%map label, jump =
              (* Compile the rest of the ANF in the confluent block *)
-             cont { ctx with instrs = confl_instrs; curr_block = confl_idx }
-               (Ssa.Phi 0) in
+             cont { ctx with instrs = confl_instrs; curr_block = confl_idx } in
            ( (label, jump_from_decision_tree)
            , preds
            , confl_instrs
@@ -149,19 +153,28 @@ let rec compile_opcode ctx anf ~cont
      ctx.proc_gen := idx + 1;
      let procs = Map.set !(ctx.procs) ~key:idx ~data:proc in
      ctx.procs := procs;
+     Queue.enqueue ctx.instrs
+       (Ssa.Box
+          ( dest
+          , Ir.function_tag
+          , (Ir.Operand.Lit (Literal.Int idx))::env ));
      cont ctx
-       (Ssa.Box(Ir.function_tag, (Ir.Operand.Lit (Literal.Int idx))::env))
-  | Anf.Load o -> cont ctx (Ssa.Load o)
-  | Anf.Prim p -> cont ctx (Ssa.Prim p)
-  | Anf.Ref x -> cont ctx (Ssa.Ref x)
+  | Anf.Load o ->
+     Queue.enqueue ctx.instrs (Ssa.Load(dest, o));
+     cont ctx
+  | Anf.Prim p ->
+     Queue.enqueue ctx.instrs (Ssa.Prim(dest, p));
+     cont ctx
+  | Anf.Ref x ->
+     Queue.enqueue ctx.instrs (Ssa.Ref(dest, x));
+     cont ctx
 
 and compile_instr ctx anf
     : (Ir.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
   let open Result.Let_syntax in
   match anf.Anf.instr with
   | Anf.Let(reg, op, next) ->
-     compile_opcode ctx op ~cont:(fun ctx op ->
-         Queue.enqueue ctx.instrs { Ssa.dest = reg; opcode = op };
+     compile_opcode ctx reg op ~cont:(fun ctx ->
          compile_instr ctx next
        )
   | Anf.Let_rec(bindings, next) ->
@@ -175,24 +188,17 @@ and compile_instr ctx anf
              | Anf.Box(_, list) -> Ok (List.length list)
              | Anf.Fun proc -> Ok (List.length proc.Anf.env + 1)
              | _ -> Error (Sequence.return Message.Unsafe_let_rec) in
-           Queue.enqueue ctx.instrs
-             { Ssa.dest = reg; opcode = Ssa.Box_dummy size }
+           Queue.enqueue ctx.instrs (Ssa.Box_dummy(reg, size))
          end in
      (* Accumulator is a function *)
      List.fold_right bindings ~init:(fun ctx ->
          compile_instr ctx next
        ) ~f:(fun (reg, op) acc ctx ->
          let temp = Ir.Register.fresh ctx.reg_gen in
-         let unused = Ir.Register.fresh ctx.reg_gen in
-         compile_opcode ctx op ~cont:(fun ctx op ->
-             (* Evaluate the let-rec binding RHS *)
-             Queue.enqueue ctx.instrs { Ssa.dest = temp; opcode = op };
+         compile_opcode ctx temp op ~cont:(fun ctx ->
              (* Mutate the memory that the register points to *)
              Queue.enqueue ctx.instrs
-               { Ssa.dest = unused
-               ; opcode =
-                   Ssa.Memcopy( Ir.Operand.Register reg
-                              , Ir.Operand.Register temp ) };
+               (Ssa.Memcopy(Ir.Operand.Register reg, Ir.Operand.Register temp));
              acc ctx)
        ) ctx
   | Anf.Break operand ->

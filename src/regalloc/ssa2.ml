@@ -1,8 +1,8 @@
 open Base
 
 type instr = {
-    dest : Ir.Register.t;
-    opcode : Ssa.opcode;
+    dest : Ir.Register.t option;
+    opcode : Ssa.instr;
     ending_regs : (Ir.Register.t, Ir.Register.comparator_witness) Set.t;
   }
 

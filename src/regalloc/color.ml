@@ -56,7 +56,7 @@ let handle_ending_regs ctx regs =
 let handle_instr ctx instr =
   let open Result.Monad_infix in
   handle_ending_regs ctx instr.Ssa2.ending_regs >>| fun () ->
-  alloc_reg ctx instr.Ssa2.dest
+  ignore (Option.map ~f:(fun dest -> alloc_reg ctx dest) instr.Ssa2.dest)
 
 let handle_instrs ctx =
   let open Result.Monad_infix in

@@ -171,22 +171,30 @@ module Ssa = struct
        Buffer.add_string pp.buffer "] ";
        print_label pp else_label
 
-  let print_opcode pp = function
-    | Ssa.Assign(lval, rval) ->
+  let print_assn pp dest =
+    Buffer.add_string pp.buffer (Ir.Register.to_string dest);
+    Buffer.add_string pp.buffer " = "
+
+  let print_instr pp = function
+    | Ssa.Assign(dest, lval, rval) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "assn ";
        print_operand pp lval;
        Buffer.add_char pp.buffer ' ';
        print_operand pp rval
-    | Ssa.Box(tag, items) ->
+    | Ssa.Box(dest, tag, items) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "box ";
        Buffer.add_string pp.buffer (Int.to_string tag);
        Buffer.add_string pp.buffer " [";
        print_comma_sep print_operand pp items;
        Buffer.add_char pp.buffer ']'
-    | Ssa.Box_dummy size ->
+    | Ssa.Box_dummy(dest, size) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "dummy ";
        Buffer.add_string pp.buffer (Int.to_string size)
-    | Ssa.Call(f, arg, args) ->
+    | Ssa.Call(dest, f, arg, args) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "call ";
        print_operand pp f;
        Buffer.add_char pp.buffer ' ';
@@ -197,15 +205,18 @@ module Ssa = struct
            Buffer.add_string pp.buffer "; "
          ) args;
        Buffer.add_string pp.buffer "]"
-    | Ssa.Deref op ->
+    | Ssa.Deref(dest, op) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "deref ";
        print_operand pp op
-    | Ssa.Get(op, idx) ->
+    | Ssa.Get(dest, op, idx) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "get ";
        print_operand pp op;
        Buffer.add_char pp.buffer ' ';
        Buffer.add_string pp.buffer (Int.to_string idx)
-    | Ssa.Load op ->
+    | Ssa.Load(dest, op) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "load ";
        print_operand pp op
     | Ssa.Memcopy(dest, src) ->
@@ -213,23 +224,22 @@ module Ssa = struct
        print_operand pp dest;
        Buffer.add_char pp.buffer ' ';
        print_operand pp src
-    | Ssa.Phi idx ->
+    | Ssa.Phi(dest, idx) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "phi ";
        Buffer.add_string pp.buffer (Int.to_string idx);
-    | Ssa.Prim str ->
+    | Ssa.Prim(dest, str) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "prim ";
        Buffer.add_string pp.buffer (String.escaped str)
-    | Ssa.Ref op ->
+    | Ssa.Ref(dest, op) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "ref ";
        print_operand pp op
-    | Ssa.Tag op ->
+    | Ssa.Tag(dest, op) ->
+       print_assn pp dest;
        Buffer.add_string pp.buffer "tag ";
        print_operand pp op
-
-  let print_instr pp Ssa.{ dest; opcode; _ } =
-    print_reg pp dest;
-    Buffer.add_string pp.buffer " = ";
-    print_opcode pp opcode
 
   let print_bb pp Ssa.{ preds; instrs; jump; _ } =
     Buffer.add_string pp.buffer "predecessors: ";
@@ -321,8 +331,11 @@ module Asm = struct
        Buffer.add_string pp.buffer @@ Int.to_string idx
     | Asm.Move(dest, src) ->
        print_instr_args pp "move" dest [src]
-    | Asm.Memcopy(dest, mem_dest, src) ->
-       print_instr_args pp "memcopy" dest [mem_dest; src]
+    | Asm.Memcopy(mem_dest, src) ->
+       Buffer.add_string pp.buffer "memcopy ";
+       print_operand pp mem_dest;
+       Buffer.add_char pp.buffer ' ';
+       print_operand pp src
     | Asm.Prim(dest, primop) ->
        Buffer.add_string pp.buffer "prim ";
        print_addr pp dest;

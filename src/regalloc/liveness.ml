@@ -1,18 +1,18 @@
 open Base
 
 let operands_of_opcode = function
-  | Ssa.Assign(lval, rval) -> [lval; rval]
-  | Ssa.Box(_, list) -> list
-  | Ssa.Box_dummy _ -> []
-  | Ssa.Call(f, arg, args) -> f::arg::args
-  | Ssa.Deref op -> [op]
-  | Ssa.Get(op, _) -> [op]
-  | Ssa.Load op -> [op]
-  | Ssa.Memcopy(dest, src) -> [dest; src]
-  | Ssa.Phi _ -> []
-  | Ssa.Prim _ -> []
-  | Ssa.Ref op -> [op]
-  | Ssa.Tag op -> [op]
+  | Ssa.Assign(dest, lval, rval) -> Some dest, [lval; rval]
+  | Ssa.Box(dest, _, list) -> Some dest, list
+  | Ssa.Box_dummy (dest, _) -> Some dest, []
+  | Ssa.Call(dest, f, arg, args) -> Some dest, f::arg::args
+  | Ssa.Deref(dest, op) -> Some dest, [op]
+  | Ssa.Get(dest, op, _) -> Some dest, [op]
+  | Ssa.Load(dest, op) -> Some dest, [op]
+  | Ssa.Memcopy(dest, src) -> None, [dest; src]
+  | Ssa.Phi(dest, _) -> Some dest, []
+  | Ssa.Prim(dest, _) -> Some dest, []
+  | Ssa.Ref(dest, op) -> Some dest, [op]
+  | Ssa.Tag(dest, op) -> Some dest, [op]
 
 let operands_of_jump = function
   | Ssa.Break(_, args) -> args
@@ -21,12 +21,13 @@ let operands_of_jump = function
   | Ssa.Switch(scrut, _, _) -> [scrut]
 
 let regs_of_opcode opcode =
-  let operands = operands_of_opcode opcode in
-  List.fold operands ~init:[] ~f:(fun acc ->
-      function
-      | Ir.Operand.Register reg -> reg::acc
-      | _ -> acc
-    )
+  let dest_opt, operands = operands_of_opcode opcode in
+  ( dest_opt
+  , List.fold operands ~init:[] ~f:(fun acc ->
+        function
+        | Ir.Operand.Register reg -> reg::acc
+        | _ -> acc
+  ) )
 
 let regs_of_jump jump =
   let open List.Monad_infix in
@@ -40,11 +41,14 @@ let handle_regs live_regs regs =
   (Set.union live_regs regs, new_regs)
 
 let handle_instr live_regs instr =
-  let (live_regs, ending_regs) =
-    handle_regs live_regs (regs_of_opcode instr.Ssa.opcode) in
-  let live_regs = Set.remove live_regs instr.Ssa.dest in
-  ( { Ssa2.dest = instr.Ssa.dest
-    ; opcode = instr.Ssa.opcode
+  let dest_opt, operand_regs = regs_of_opcode instr in
+  let live_regs, ending_regs = handle_regs live_regs operand_regs in
+  let live_regs =
+    match dest_opt with
+    | Some dest -> Set.remove live_regs dest
+    | None -> live_regs in
+  ( { Ssa2.dest = dest_opt
+    ; opcode = instr
     ; ending_regs }
   , live_regs )
 

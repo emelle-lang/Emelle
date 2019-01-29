@@ -20,48 +20,75 @@ let compile_operands coloring =
 
 type compile_opcode_result =
   | Opcode of Asm.instr
-  | Phi of int
+  | Phi of int * int
 
-let compile_instr coloring { Ssa2.dest; opcode; _ } =
-  let open Result.Let_syntax in
+let find_color coloring dest f =
   match Hashtbl.find coloring.Color.map dest with
-  | None -> Message.unreachable "compile_instr"
-  | Some dest ->
-     match opcode with
-     | Ssa.Assign(lval, rval) ->
-        let%bind lval = compile_operand coloring lval in
-        let%map rval = compile_operand coloring rval in
-        Opcode (Asm.Assign(dest, lval, rval))
-     | Ssa.Box(tag, operands) ->
-        let%map operands = compile_operands coloring operands in
-        Opcode (Asm.Box(dest, tag, operands))
-     | Ssa.Box_dummy i -> Ok (Opcode (Asm.Box_dummy(dest, i)))
-     | Ssa.Call(f, arg, args) ->
-        let%bind f = compile_operand coloring f in
-        let%bind arg = compile_operand coloring arg in
-        let%map args = compile_operands coloring args in
-        Opcode (Asm.Call(dest, f, arg, args))
-     | Ssa.Deref operand ->
-        let%map operand = compile_operand coloring operand in
-        Opcode (Asm.Deref(dest, operand))
-     | Ssa.Get(operand, idx) ->
-        let%map operand = compile_operand coloring operand in
-        Opcode (Asm.Get(dest, operand, idx))
-     | Ssa.Load operand ->
-        let%map operand = compile_operand coloring operand in
-        Opcode (Asm.Move(dest, operand))
-     | Ssa.Memcopy(mem_dest, src) ->
-        let%bind mem_dest = compile_operand coloring mem_dest in
-        let%map src = compile_operand coloring src in
-        Opcode (Asm.Memcopy(dest, mem_dest, src))
-     | Ssa.Phi idx -> Ok (Phi idx)
-     | Ssa.Prim str -> Ok (Opcode (Asm.Prim(dest, str)))
-     | Ssa.Ref operand ->
-        let%map operand = compile_operand coloring operand in
-        Opcode (Asm.Ref(dest, operand))
-     | Ssa.Tag operand ->
-        let%map operand = compile_operand coloring operand in
-        Opcode (Asm.Tag(dest, operand))
+  | None -> Message.unreachable "find_color compile_basic_block"
+  | Some color -> f color
+
+let compile_instr coloring opcode =
+  let open Result.Let_syntax in
+  match opcode with
+  | Ssa.Assign(dest, lval, rval) ->
+     find_color coloring dest (fun dest ->
+         let%bind lval = compile_operand coloring lval in
+         let%map rval = compile_operand coloring rval in
+         Opcode (Asm.Assign(dest, lval, rval))
+       )
+  | Ssa.Box(dest, tag, operands) ->
+     find_color coloring dest (fun dest ->
+         let%map operands = compile_operands coloring operands in
+         Opcode (Asm.Box(dest, tag, operands))
+       )
+  | Ssa.Box_dummy(dest, i) ->
+     find_color coloring dest (fun dest ->
+         Ok (Opcode (Asm.Box_dummy(dest, i)))
+       )
+  | Ssa.Call(dest, f, arg, args) ->
+     find_color coloring dest (fun dest ->
+         let%bind f = compile_operand coloring f in
+         let%bind arg = compile_operand coloring arg in
+         let%map args = compile_operands coloring args in
+         Opcode (Asm.Call(dest, f, arg, args))
+       )
+  | Ssa.Deref(dest, operand) ->
+     find_color coloring dest (fun dest ->
+         let%map operand = compile_operand coloring operand in
+         Opcode (Asm.Deref(dest, operand))
+       )
+  | Ssa.Get(dest, operand, idx) ->
+     find_color coloring dest (fun dest ->
+         let%map operand = compile_operand coloring operand in
+         Opcode (Asm.Get(dest, operand, idx))
+       )
+  | Ssa.Load(dest, operand) ->
+     find_color coloring dest (fun dest ->
+         let%map operand = compile_operand coloring operand in
+         Opcode (Asm.Move(dest, operand))
+       )
+  | Ssa.Memcopy(mem_dest, src) ->
+     let%bind mem_dest = compile_operand coloring mem_dest in
+     let%map src = compile_operand coloring src in
+     Opcode (Asm.Memcopy(mem_dest, src))
+  | Ssa.Phi(dest, idx) ->
+     find_color coloring dest (fun dest ->
+         Ok (Phi(dest, idx))
+       )
+  | Ssa.Prim(dest, str) ->
+     find_color coloring dest (fun dest ->
+         Ok (Opcode (Asm.Prim(dest, str)))
+       )
+  | Ssa.Ref(dest, operand) ->
+     find_color coloring dest (fun dest ->
+         let%map operand = compile_operand coloring operand in
+         Opcode (Asm.Ref(dest, operand))
+       )
+  | Ssa.Tag(dest, operand) ->
+     find_color coloring dest (fun dest ->
+         let%map operand = compile_operand coloring operand in
+         Opcode (Asm.Tag(dest, operand))
+       )
 
 let rec compile_basic_block new_blocks coloring proc label =
   let open Result.Let_syntax in
@@ -76,12 +103,9 @@ let rec compile_basic_block new_blocks coloring proc label =
         let%bind () =
           List.fold block.Ssa2.instrs ~init:(Ok ()) ~f:(fun acc instr ->
               let%bind () = acc in
-              match Hashtbl.find coloring.Color.map instr.Ssa2.dest with
-              | None -> Message.unreachable "to_asm compile_basic_block 2"
-              | Some color ->
-                 match%map compile_instr coloring instr with
-                 | Opcode instr -> Queue.enqueue instrs instr
-                 | Phi idx -> Queue.enqueue phis (color, idx) ) in
+              match%map compile_instr coloring instr.Ssa2.opcode with
+              | Opcode instr -> Queue.enqueue instrs instr
+              | Phi(color, idx) -> Queue.enqueue phis (color, idx) ) in
         let%map new_blocks = match block.Ssa2.jump with
           | Ssa.Break(label, args) ->
              let args = Array.of_list args in
