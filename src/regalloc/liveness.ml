@@ -9,7 +9,6 @@ let operands_of_opcode = function
   | Ssa.Get(dest, op, _) -> Some dest, [op]
   | Ssa.Load(dest, op) -> Some dest, [op]
   | Ssa.Memcopy(dest, src) -> None, [dest; src]
-  | Ssa.Phi(dest, _) -> Some dest, []
   | Ssa.Prim(dest, _) -> Some dest, []
   | Ssa.Ref(dest, op) -> Some dest, [op]
   | Ssa.Tag(dest, op) -> Some dest, [op]
@@ -79,8 +78,14 @@ let rec handle_block live_regs blocks proc label =
      let ending_at_jump = Set.diff live_at_jump live_regs in
      let live_regs = Set.union live_regs ending_at_jump in
      let instrs, live_regs = handle_instrs live_regs block.Ssa.instrs in
+     let live_regs =
+       (* Add the basic block parameters to the set of live registers *)
+       List.fold block.Ssa.params ~init:live_regs ~f:(fun acc param ->
+           Set.add acc param
+         ) in
      let block' =
-       { Ssa2.preds = block.Ssa.preds
+       { Ssa2.params = block.Ssa.params
+       ; preds = block.Ssa.preds
        ; instrs
        ; jump = block.Ssa.jump
        ; ending_at_jump } in

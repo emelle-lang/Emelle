@@ -20,13 +20,13 @@ type instr =
   | Get of register * operand * int
   | Load of register * operand
   | Memcopy of operand * operand
-  | Phi of register * int
   | Prim of register * string
   | Ref of register * operand
   | Tag of register * operand
 
 type basic_block = {
     mutable preds : (Ir.Label.t, Ir.Label.comparator_witness) Set.t;
+    params : register list;
     instrs : instr Queue.t;
     jump : jump;
   }

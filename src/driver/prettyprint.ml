@@ -172,7 +172,7 @@ module Ssa = struct
        print_label pp else_label
 
   let print_assn pp dest =
-    Buffer.add_string pp.buffer (Ir.Register.to_string dest);
+    print_reg pp dest;
     Buffer.add_string pp.buffer " = "
 
   let print_instr pp = function
@@ -224,10 +224,6 @@ module Ssa = struct
        print_operand pp dest;
        Buffer.add_char pp.buffer ' ';
        print_operand pp src
-    | Ssa.Phi(dest, idx) ->
-       print_assn pp dest;
-       Buffer.add_string pp.buffer "phi ";
-       Buffer.add_string pp.buffer (Int.to_string idx);
     | Ssa.Prim(dest, str) ->
        print_assn pp dest;
        Buffer.add_string pp.buffer "prim ";
@@ -241,7 +237,11 @@ module Ssa = struct
        Buffer.add_string pp.buffer "tag ";
        print_operand pp op
 
-  let print_bb pp Ssa.{ preds; instrs; jump; _ } =
+  let print_bb pp Ssa.{ params; preds; instrs; jump; _ } =
+    Buffer.add_char pp.buffer '(';
+    print_comma_sep print_reg pp params;
+    Buffer.add_string pp.buffer "):";
+    newline pp;
     Buffer.add_string pp.buffer "predecessors: ";
     print_comma_sep print_label pp (Set.to_list preds);
     newline pp;
@@ -262,9 +262,7 @@ module Ssa = struct
         newline pp;
         Map.iteri ~f:(fun ~key ~data ->
             print_label pp key;
-            Buffer.add_char pp.buffer ':';
             indent pp (fun pp ->
-                newline pp;
                 print_bb pp data
               );
             newline pp

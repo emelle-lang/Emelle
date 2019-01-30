@@ -7,6 +7,7 @@ type instr = {
   }
 
 type basic_block = {
+    params : Ir.Register.t list;
     preds : (Ir.Label.t, Ir.Label.comparator_witness) Set.t;
     instrs : instr list;
     jump : Ssa.jump;

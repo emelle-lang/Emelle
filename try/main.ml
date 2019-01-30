@@ -26,9 +26,9 @@ let () =
                 Parser.file Lexer.expr (Lexing.from_string bytestr)
                 |> Pipeline.compile (Hashtbl.create (module String)) "main"
               with
-              | Ok (_, asm_module) ->
+              | Ok (ssa_module, _) ->
                  Caml.print_endline "OK!";
-                 Prettyprint.Asm.print_module pp asm_module;
+                 Prettyprint.Ssa.print_module pp ssa_module;
                  set_console_text (Prettyprint.to_string pp)
               | Error errs ->
                  Caml.print_endline "ERROR!";

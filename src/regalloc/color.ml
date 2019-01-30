@@ -93,6 +93,9 @@ let rec handle_block ctx proc label =
         match Hashtbl.add ctx.visited_blocks ~key:label ~data:ctx with
         | `Duplicate -> Ok ()
         | `Ok ->
+           List.iter block.Ssa2.params ~f:(fun reg_param ->
+               alloc_reg ctx reg_param
+             );
            handle_instrs ctx block.Ssa2.instrs >>= fun () ->
            handle_ending_regs ctx block.Ssa2.ending_at_jump >>= fun () ->
            let succs = Ssa.successors block.Ssa2.jump in

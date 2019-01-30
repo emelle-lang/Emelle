@@ -25,8 +25,8 @@ type instr =
   | Switch of operand * (int * Ir.Label.t) list * Ir.Label.t
 
 type block = {
+    block_params : address list;
     instrs : instr Queue.t;
-    phis : (address * int) Queue.t (* dest color, index *)
   }
 
 type proc = {

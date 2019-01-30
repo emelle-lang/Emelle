@@ -1,6 +1,6 @@
 (** This transformation turns ANF join points, which are local to the case expr,
     into SSA basic blocks, which are local to the function. Here, the compiler
-    compiles decision trees into switches, jumps, and phi nodes. *)
+    compiles decision trees into switches, jumps, and basic block parameters. *)
 
 open Base
 
@@ -34,8 +34,8 @@ type branch = {
 let fresh_block ctx ~cont =
   let open Result.Let_syntax in
   let idx = Ir.Label.fresh ctx.label_gen in
-  let%map ret, preds, instrs, jump = cont idx in
-  let block = { Ssa.instrs; preds; jump } in
+  let%map ret, params, preds, instrs, jump = cont idx in
+  let block = { Ssa.instrs; params; preds; jump } in
   ctx.blocks := Map.set !(ctx.blocks) ~key:idx ~data:block;
   (ret, block)
 
@@ -66,6 +66,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
                  compile_decision_tree ctx case_instrs case_idx branches tree
                in
                ( (case, case_idx)::list
+               , []
                , Set.singleton (module Ir.Label) this_label
                , case_instrs
                , jump )
@@ -79,6 +80,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
              compile_decision_tree ctx else_instrs else_idx branches else_tree
            in
            ( else_idx
+           , []
            , Set.singleton (module Ir.Label) this_label
            , else_instrs
            , jump )
@@ -111,9 +113,6 @@ let rec compile_opcode ctx dest anf ~cont
                  let%map (branch_idx, label), block =
                    fresh_block ctx ~cont:(fun branch_idx ->
                        let branch_instrs = Queue.create () in
-                       List.iteri reg_args ~f:(fun i reg_arg ->
-                           Queue.enqueue branch_instrs (Ssa.Phi(reg_arg, i));
-                         );
                        let%map label, jump =
                          compile_instr
                            { ctx with
@@ -122,6 +121,7 @@ let rec compile_opcode ctx dest anf ~cont
                            ; jump_dest = Label confl_idx }
                            instr in
                        ( (branch_idx, label)
+                       , reg_args
                        , Set.empty (module Ir.Label)
                        , branch_instrs
                        , jump )
@@ -137,11 +137,11 @@ let rec compile_opcode ctx dest anf ~cont
                  Set.add acc label
                ) in
            (* Label of confluent block, jump of confluent block *)
-           Queue.enqueue confl_instrs (Ssa.Phi(dest, 0));
            let%map label, jump =
              (* Compile the rest of the ANF in the confluent block *)
              cont { ctx with instrs = confl_instrs; curr_block = confl_idx } in
            ( (label, jump_from_decision_tree)
+           , [dest]
            , preds
            , confl_instrs
            , jump )
@@ -224,6 +224,7 @@ and compile_proc ctx proc =
   let%map before_return, jump = compile_instr state proc.Anf.body in
   let entry_block =
     { Ssa.preds = Set.empty (module Ir.Label)
+    ; params = []
     ; instrs
     ; jump } in
   { Ssa.free_vars = List.map ~f:(fun (reg, _) -> reg) proc.Anf.env
@@ -248,6 +249,7 @@ let compile_package anf =
   let%map before_return, jump = compile_instr ctx anf.Anf.top_instr in
   let entry_block =
     { Ssa.preds = Set.empty (module Ir.Label)
+    ; params = []
     ; instrs = ctx.instrs
     ; jump } in
   let main_proc =
