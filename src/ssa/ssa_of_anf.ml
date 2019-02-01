@@ -87,6 +87,10 @@ let rec compile_decision_tree ctx instrs this_label branches =
          )
      in Ssa.Switch(Ir.Operand.Register tag_reg, cases, else_block_idx)
 
+type 'a rec_def =
+  | Rec_box of int * Ir.Operand.t list
+  | Rec_fun of 'a Anf.proc
+
 let rec compile_opcode ctx dest anf ~cont
         : (Ir.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
   let open Result.Let_syntax in
@@ -179,28 +183,44 @@ and compile_instr ctx anf
        )
   | Anf.Let_rec(bindings, next) ->
      (* Initialize registers with dummy allocations *)
-     let%bind () =
-       List.fold_left bindings ~init:(Ok ()) ~f:begin
+     let%bind bindings =
+       List.fold_left bindings ~init:(Ok []) ~f:begin
            fun acc (reg, def) ->
-           let%bind () = acc in
-           let%map size =
+           let%bind list = acc in
+           let%map def, size =
              match def with
-             | Anf.Box(_, list) -> Ok (List.length list)
-             | Anf.Fun proc -> Ok (List.length proc.Anf.env + 1)
+             | Anf.Box(tag, list) ->
+                Ok (Rec_box(tag, list), List.length list)
+             | Anf.Fun proc ->
+                Ok (Rec_fun proc, List.length proc.Anf.env + 1)
              | _ -> Error (Sequence.return Message.Unsafe_let_rec) in
-           Queue.enqueue ctx.instrs (Ssa.Box_dummy(reg, size))
+           Queue.enqueue ctx.instrs (Ssa.Box_dummy(reg, size));
+           (reg, def)::list
          end in
-     (* Accumulator is a function *)
-     List.fold_right bindings ~init:(fun ctx ->
-         compile_instr ctx next
-       ) ~f:(fun (reg, op) acc ctx ->
-         let temp = Ir.Register.fresh ctx.reg_gen in
-         compile_opcode ctx temp op ~cont:(fun ctx ->
-             (* Mutate the memory that the register points to *)
-             Queue.enqueue ctx.instrs
-               (Ssa.Memcopy(Ir.Operand.Register reg, Ir.Operand.Register temp));
-             acc ctx)
-       ) ctx
+     (* Now the list of bindings is reversed *)
+     List.fold_right bindings ~init:(Ok ()) ~f:(fun (reg, op) acc ->
+         let%bind () = acc in
+         let dest = Ir.Operand.Register reg in
+         match op with
+         | Rec_box(tag, list) ->
+            List.iteri list ~f:(fun i operand ->
+                Queue.enqueue ctx.instrs (Ssa.Set_field(dest, i, operand))
+              );
+            Ok (Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, tag)))
+         | Rec_fun proc ->
+            let%map proc' = compile_proc ctx proc in
+            let idx = !(ctx.proc_gen) in
+            ctx.proc_gen := idx + 1;
+            let procs = Map.set !(ctx.procs) ~key:idx ~data:proc' in
+            ctx.procs := procs;
+            Queue.enqueue ctx.instrs
+              (Ssa.Set_field(dest, 0, Ir.Operand.Lit (Literal.Int idx)));
+            List.iteri proc.Anf.env ~f:(fun i (_, operand) ->
+                Queue.enqueue ctx.instrs (Ssa.Set_field(dest, i + 1, operand))
+              );
+            Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, Ir.function_tag))
+       ) >>= fun () ->
+     compile_instr ctx next
   | Anf.Break operand ->
      Ok ( ctx.curr_block
         , match ctx.jump_dest with

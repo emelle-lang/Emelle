@@ -8,9 +8,10 @@ let operands_of_opcode = function
   | Ssa.Deref(dest, op) -> Some dest, [op]
   | Ssa.Get(dest, op, _) -> Some dest, [op]
   | Ssa.Load(dest, op) -> Some dest, [op]
-  | Ssa.Memcopy(dest, src) -> None, [dest; src]
   | Ssa.Prim(dest, _) -> Some dest, []
   | Ssa.Ref(dest, op) -> Some dest, [op]
+  | Ssa.Set_field(dest, _, op) -> None, [dest; op]
+  | Ssa.Set_tag(dest, _) -> None, [dest]
   | Ssa.Tag(dest, op) -> Some dest, [op]
 
 let operands_of_jump = function

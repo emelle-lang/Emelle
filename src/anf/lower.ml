@@ -102,7 +102,7 @@ and flatten_app self count args f x ~cont =
              ; params
              ; body =
                  make_break self f.Typedtree.ann (Anf.Box(tag, box_contents))
-             ; reg_gen } (* TODO change this *)
+             ; reg_gen }
            in Anf.Fun proc
        )
   | Typedtree.Ref ->

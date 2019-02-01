@@ -15,9 +15,10 @@ type instr =
   | Deref of address * operand
   | Get of address * operand * int
   | Move of address * operand
-  | Memcopy of operand * operand
   | Prim of address * string
   | Ref of address * operand
+  | Set_field of operand * int * operand
+  | Set_tag of operand * int
   | Tag of address * operand
   | Break of Ir.Label.t
   | Fail
@@ -32,6 +33,7 @@ type block = {
 type proc = {
     free_vars : address list;
     params : address list;
+    entry : Ir.Label.t;
     blocks : (Ir.Label.t, block, Ir.Label.comparator_witness) Map.t;
     frame_size : int;
   }

@@ -63,10 +63,6 @@ let compile_instr coloring opcode =
          let%map operand = compile_operand coloring operand in
          Asm.Move(dest, operand)
        )
-  | Ssa.Memcopy(mem_dest, src) ->
-     let%bind mem_dest = compile_operand coloring mem_dest in
-     let%map src = compile_operand coloring src in
-     Asm.Memcopy(mem_dest, src)
   | Ssa.Prim(dest, str) ->
      find_color coloring dest (fun dest ->
          Ok (Asm.Prim(dest, str))
@@ -76,6 +72,13 @@ let compile_instr coloring opcode =
          let%map operand = compile_operand coloring operand in
          Asm.Ref(dest, operand)
        )
+  | Ssa.Set_field(dest, idx, op) ->
+     let%bind dest = compile_operand coloring dest in
+     let%map op = compile_operand coloring op in
+     Asm.Set_field(dest, idx, op)
+  | Ssa.Set_tag(dest, tag) ->
+     let%map dest = compile_operand coloring dest in
+     Asm.Set_tag(dest, tag)
   | Ssa.Tag(dest, operand) ->
      find_color coloring dest (fun dest ->
          let%map operand = compile_operand coloring operand in
@@ -158,7 +161,11 @@ let compile_proc coloring proc =
         | None -> Message.unreachable "compile_proc params"
       ) in
   let%map blocks, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
-  { Asm.free_vars; params; blocks; frame_size = coloring.Color.frame_size }
+  { Asm.free_vars
+  ; params
+  ; entry = proc.Ssa2.entry
+  ; blocks
+  ; frame_size = coloring.Color.frame_size }
 
 let compile { Color.colorings; main's_coloring } package =
   let open Result.Let_syntax in

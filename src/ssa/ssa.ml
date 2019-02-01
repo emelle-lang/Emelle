@@ -19,9 +19,10 @@ type instr =
   | Deref of register * operand
   | Get of register * operand * int
   | Load of register * operand
-  | Memcopy of operand * operand
   | Prim of register * string
   | Ref of register * operand
+  | Set_field of operand * int * operand
+  | Set_tag of operand * int
   | Tag of register * operand
 
 type basic_block = {

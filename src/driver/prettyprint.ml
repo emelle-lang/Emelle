@@ -219,11 +219,6 @@ module Ssa = struct
        print_assn pp dest;
        Buffer.add_string pp.buffer "load ";
        print_operand pp op
-    | Ssa.Memcopy(dest, src) ->
-       Buffer.add_string pp.buffer "memcopy ";
-       print_operand pp dest;
-       Buffer.add_char pp.buffer ' ';
-       print_operand pp src
     | Ssa.Prim(dest, str) ->
        print_assn pp dest;
        Buffer.add_string pp.buffer "prim ";
@@ -232,6 +227,18 @@ module Ssa = struct
        print_assn pp dest;
        Buffer.add_string pp.buffer "ref ";
        print_operand pp op
+    | Ssa.Set_field(dest, idx, op) ->
+       Buffer.add_string pp.buffer "set_field ";
+       print_operand pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer (Int.to_string idx);
+       Buffer.add_char pp.buffer ' ';
+       print_operand pp op
+    | Ssa.Set_tag(dest, tag) ->
+       Buffer.add_string pp.buffer "set_tag ";
+       print_operand pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer (Int.to_string tag)
     | Ssa.Tag(dest, op) ->
        print_assn pp dest;
        Buffer.add_string pp.buffer "tag ";
@@ -329,11 +336,6 @@ module Asm = struct
        Buffer.add_string pp.buffer @@ Int.to_string idx
     | Asm.Move(dest, src) ->
        print_instr_args pp "move" dest [src]
-    | Asm.Memcopy(mem_dest, src) ->
-       Buffer.add_string pp.buffer "memcopy ";
-       print_operand pp mem_dest;
-       Buffer.add_char pp.buffer ' ';
-       print_operand pp src
     | Asm.Prim(dest, primop) ->
        Buffer.add_string pp.buffer "prim ";
        print_addr pp dest;
@@ -341,6 +343,18 @@ module Asm = struct
        Buffer.add_string pp.buffer @@ String.escaped primop
     | Asm.Ref(dest, value) ->
        print_instr_args pp "ref" dest [value]
+    | Asm.Set_field(dest, idx, src) ->
+       Buffer.add_string pp.buffer "set_field ";
+       print_operand pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer (Int.to_string idx);
+       Buffer.add_char pp.buffer ' ';
+       print_operand pp src
+    | Asm.Set_tag(dest, tag) ->
+       Buffer.add_string pp.buffer "set_tag ";
+       print_operand pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer (Int.to_string tag)
     | Asm.Tag(dest, op) ->
        print_instr_args pp "tag" dest [op]
     | Asm.Break label ->

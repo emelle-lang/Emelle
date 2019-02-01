@@ -146,7 +146,7 @@ let tests =
         | Right x -> x
      |}
   ; "() type Product a b = Pair a * b let mkPair = fun x y -> Pair x y"
-  ; {|(id, const, undefined)
+  (*; {|(id, const, undefined)
 
       let id = foreign "id" forall t. t -> t
 
@@ -157,7 +157,7 @@ let tests =
       let id2 = id id id
 
       let id3 = const undefined id
-     |}
+     |}*)
   ; {|()
       type Option a = None | Some a
 
@@ -276,7 +276,14 @@ let () =
         Parser.file Lexer.expr (Lexing.from_string test)
         |> Pipeline.compile (Hashtbl.create (module String)) "main"
       with
-      | Ok _ -> ()
+      | Ok(_, file) ->
+         begin
+           try ignore (Eval.eval file) with
+           | _ ->
+              let pp = Prettyprint.create () in
+              Prettyprint.Asm.print_module pp file;
+              failwith (test ^ "\n" ^ (Prettyprint.to_string pp))
+         end
       | Error e ->
          let pp = Prettyprint.create () in
          Sequence.iter ~f:(Prettyprint.print_error pp) e;
