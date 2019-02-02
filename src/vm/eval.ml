@@ -1,9 +1,22 @@
 open Base
 
-type value =
-  | Box of { mutable tag : int; data : value array }
+type box = {
+    mutable tag : int;
+    data : value array
+  }
+
+and partial_app = {
+    proc : Asm.proc;
+    closure : value array;
+    remaining_params : int list;
+    param_arg_pairs : (int * value) list;
+  }
+
+and value =
+  | Box of box
   | Char of char
   | Float of float
+  | Partial_app of partial_app
   | Int of int
   | Ref of value ref
   | String of string
@@ -55,13 +68,10 @@ let rec eval_instr t file frame =
      frame.data.(dest) <- Box { tag = 255; data };
      bump_ip t
   | Asm.Call(dest, f, arg, args) ->
-     begin match eval_operand frame f with
-     | Box { data; _ } ->
-        let arg = eval_operand frame arg in
-        let args = List.map ~f:(eval_operand frame) args in
-        frame.data.(dest) <- apply_function file data (arg::args)
-     | _ -> failwith "Type error"
-     end;
+     let f = eval_operand frame f in
+     let arg = eval_operand frame arg in
+     let args = List.map ~f:(eval_operand frame) args in
+     frame.data.(dest) <- apply_function file f (arg::args);
      bump_ip t
   | Asm.Deref(dest, r) ->
      begin match eval_operand frame r with
@@ -119,33 +129,54 @@ let rec eval_instr t file frame =
      end
   | Asm.Prim _ -> failwith "Unimplemented"
 
-and apply_function file proc_data args =
-  match proc_data.(0) with
-  | Int idx ->
-     let proc = Map.find_exn file.Asm.procs idx in
-     let ctx =
-       { proc
-       ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
-       ; ip = 0
-       ; return = Uninitialized } in
-     let frame = { data = Array.create ~len:proc.frame_size Uninitialized } in
-     (* Load environment into stack frame *)
-     List.iteri proc.Asm.free_vars ~f:(fun i addr ->
-         frame.data.(addr) <- proc_data.(i + 1)
-       );
-     let _ =
-       (* Load arguments into stack frame *)
-       List.iter2 proc.Asm.params args ~f:(fun addr data ->
-           frame.data.(addr) <- data
-         ) in
-     let rec loop () =
-       match ctx.return with
-       | Uninitialized ->
-          eval_instr ctx file frame;
-          loop ()
-       | _ -> ctx.return
-     in loop ()
-  | _ -> failwith "Type error: Expected function pointer"
+and apply_function file value args =
+  let proc, proc_data, params, param_arg_pairs = match value with
+    | Box { tag; data } when tag = Ir.function_tag ->
+       begin match data.(0) with
+       | Int idx ->
+          let proc = Map.find_exn file.Asm.procs idx in
+          proc, data, proc.Asm.params, []
+       | _ -> failwith "Expected function pointer"
+       end
+    | Partial_app { proc; closure; remaining_params; param_arg_pairs } ->
+       proc, closure, remaining_params, param_arg_pairs
+    | _ -> failwith "Type error: Expected function" in
+  let execute param_arg_pairs =
+    let frame = { data = Array.create ~len:proc.frame_size Uninitialized } in
+    (* Load arguments into stack frame *)
+    List.iter param_arg_pairs ~f:(fun (param, arg) ->
+        frame.data.(param) <- arg
+      );
+    (* Load environment into stack frame *)
+    List.iteri proc.Asm.free_vars ~f:(fun i addr ->
+        frame.data.(addr) <- proc_data.(i + 1)
+      );
+    let ctx =
+      { proc
+      ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
+      ; ip = 0
+      ; return = Uninitialized } in
+    let rec loop () =
+      match ctx.return with
+      | Uninitialized ->
+         eval_instr ctx file frame;
+         loop ()
+      | _ -> ctx.return
+    in loop () in
+  let rec load_params acc params args =
+    match params, args with
+    | [], [] -> execute acc
+    | param::params, arg::args ->
+       load_params ((param, arg)::acc) params args
+    | params, [] -> (* More parameters than arguments *)
+       Partial_app
+         { proc
+         ; closure = proc_data
+         ; remaining_params = params
+         ; param_arg_pairs = acc }
+    | [], args -> (* More arguments than parameters *)
+       apply_function file (execute acc) args
+  in load_params param_arg_pairs params args
 
 let eval file =
   let proc = file.Asm.main in

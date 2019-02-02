@@ -268,6 +268,36 @@ let tests =
       let r = Ref 1
 
       let () = r := 2
+     |}
+  ; {|()
+      type Product a b = Pair a * b
+
+      let f = fun x y -> Pair x y
+
+      let g = f 1
+
+      let x = g 2
+
+      let y = g 3
+     |}
+  ; {|()
+      type Bool = False | True
+
+      let not = fun
+        | False -> True
+        | True -> False
+
+      let id = fun x -> x
+
+      let f = fun
+        | False -> id
+        | True -> not
+
+      let b = f True True
+
+      let () = case b with
+        | False -> ()
+
      |} ]
 
 let () =
