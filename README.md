@@ -7,9 +7,9 @@ Emelle is a work-in-progress
 
 First, download OPAM, the OCaml package manager.
 
-Switch to the latest compiler version (4.07.0 at the time of writing):
+Switch to the latest compiler version (4.07.1 at the time of writing):
 
-    opam switch 4.07.0
+    opam switch 4.07.1
 
 Emelle uses the `dune` build tool. To install it, run:
 
