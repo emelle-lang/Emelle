@@ -6,22 +6,34 @@ type box = {
   }
 
 and partial_app = {
-    proc : Asm.proc;
+    proc : proc;
+    frame_size : int;
     closure : value array;
     remaining_params : int list;
     param_arg_pairs : (int * value) list;
+  }
+
+and foreign = {
+    arity : int;
+    params : int list;
+    f : value array -> value
   }
 
 and value =
   | Box of box
   | Char of char
   | Float of float
+  | Foreign of foreign
   | Partial_app of partial_app
   | Int of int
   | Ref of value ref
   | String of string
   | Uninitialized
   | Unit
+
+and proc =
+  | Emelle_proc of Asm.proc
+  | OCaml_proc of (value array -> value)
 
 type frame = {
     data : value array;
@@ -30,6 +42,25 @@ type frame = {
     proc : Asm.proc;
     mutable return : value;
   }
+
+type t = {
+    foreign_values : (string, value) Hashtbl.t
+  }
+
+let create () =
+  { foreign_values =
+      Hashtbl.of_alist_exn
+        (module String)
+        [ "puts"
+        , Foreign
+            { arity = 1
+            ; params = [0]
+            ; f =
+                function
+                | [|String s|] ->
+                   Caml.print_endline s;
+                   Unit
+                | _ -> failwith "Type error" } ] }
 
 let eval_operand frame = function
   | Asm.Extern_var _ -> failwith "unimplemented"
@@ -47,7 +78,7 @@ let break frame label =
   frame.block <- Map.find_exn frame.proc.Asm.blocks label;
   frame.ip <- 0
 
-let rec eval_instr file frame =
+let rec eval_instr t file frame =
   match Queue.get frame.block.Asm.instrs frame.ip with
   | Asm.Assign(dest, lval, rval) ->
      begin match eval_operand frame lval with
@@ -68,7 +99,7 @@ let rec eval_instr file frame =
      let f = eval_operand frame f in
      let arg = eval_operand frame arg in
      let args = List.map ~f:(eval_operand frame) args in
-     frame.data.(dest) <- apply_function file f (arg::args);
+     frame.data.(dest) <- apply_function t file f (arg::args);
      bump_ip frame
   | Asm.Deref(dest, r) ->
      begin match eval_operand frame r with
@@ -124,42 +155,55 @@ let rec eval_instr file frame =
         check cases
      | _ -> failwith "Unreachable"
      end
-  | Asm.Prim _ -> failwith "Unimplemented"
+  | Asm.Prim(dest, key) ->
+     frame.data.(dest) <- Hashtbl.find_exn t.foreign_values key;
+     bump_ip frame
 
-and apply_function file value args =
-  let proc, proc_data, params, param_arg_pairs = match value with
+and apply_function t file value args =
+  let proc, frame_size, proc_data, params, param_arg_pairs =
+    match value with
     | Box { tag; data } when tag = Ir.function_tag ->
        begin match data.(0) with
        | Int idx ->
           let proc = Map.find_exn file.Asm.procs idx in
-          proc, data, proc.Asm.params, []
+          Emelle_proc proc, proc.Asm.frame_size, data, proc.Asm.params, []
        | _ -> failwith "Expected function pointer"
        end
-    | Partial_app { proc; closure; remaining_params; param_arg_pairs } ->
-       proc, closure, remaining_params, param_arg_pairs
+    | Foreign { params; f; arity } ->
+       OCaml_proc f, arity, [||], params, []
+    | Partial_app { proc
+                  ; frame_size
+                  ; closure
+                  ; remaining_params
+                  ; param_arg_pairs } ->
+       proc, frame_size, closure, remaining_params, param_arg_pairs
     | _ -> failwith "Type error: Expected function" in
   let execute param_arg_pairs =
-    let frame =
-      { data = Array.create ~len:proc.frame_size Uninitialized
-      ; proc
-      ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
-      ; ip = 0
-      ; return = Uninitialized } in
+    let data = Array.create ~len:frame_size Uninitialized in
     (* Load arguments into stack frame *)
     List.iter param_arg_pairs ~f:(fun (param, arg) ->
-        frame.data.(param) <- arg
+        data.(param) <- arg
       );
-    (* Load environment into stack frame *)
-    List.iteri proc.Asm.free_vars ~f:(fun i addr ->
-        frame.data.(addr) <- proc_data.(i + 1)
-      );
-    let rec loop () =
-      match frame.return with
-      | Uninitialized ->
-         eval_instr file frame;
-         loop ()
-      | _ -> frame.return
-    in loop () in
+    match proc with
+    | Emelle_proc proc ->
+       let frame =
+         { data = data
+         ; proc
+         ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
+         ; ip = 0
+         ; return = Uninitialized } in
+       (* Load environment into stack frame *)
+       List.iteri proc.Asm.free_vars ~f:(fun i addr ->
+           frame.data.(addr) <- proc_data.(i + 1)
+         );
+       let rec loop () =
+         match frame.return with
+         | Uninitialized ->
+            eval_instr t file frame;
+            loop ()
+         | _ -> frame.return
+       in loop ()
+    | OCaml_proc proc -> proc data in
   let rec load_params acc params args =
     match params, args with
     | [], [] -> execute acc
@@ -168,14 +212,15 @@ and apply_function file value args =
     | params, [] -> (* More parameters than arguments *)
        Partial_app
          { proc
+         ; frame_size
          ; closure = proc_data
          ; remaining_params = params
          ; param_arg_pairs = acc }
     | [], args -> (* More arguments than parameters *)
-       apply_function file (execute acc) args
+       apply_function t file (execute acc) args
   in load_params param_arg_pairs params args
 
-let eval file =
+let eval t file =
   let proc = file.Asm.main in
   let frame =
     { data = Array.create ~len:proc.frame_size Uninitialized
@@ -186,7 +231,7 @@ let eval file =
   let rec loop () =
     match frame.return with
     | Uninitialized ->
-       eval_instr file frame;
+       eval_instr t file frame;
        loop ()
     | _ -> frame.return
   in loop ()

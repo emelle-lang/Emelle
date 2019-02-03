@@ -298,6 +298,11 @@ let tests =
       let () = case b with
         | False -> ()
 
+     |}
+  ; {|()
+      let puts = foreign "puts" forall a . a -> Unit
+
+      let () = puts "Hello world!"
      |} ]
 
 let () =
@@ -308,7 +313,8 @@ let () =
       with
       | Ok(_, file) ->
          begin
-           try ignore (Eval.eval file) with
+           let ctx = Eval.create () in
+           try ignore (Eval.eval ctx file) with
            | _ ->
               let pp = Prettyprint.create () in
               Prettyprint.Asm.print_module pp file;

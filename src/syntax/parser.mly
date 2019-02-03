@@ -13,6 +13,7 @@
 %token REC
 %token REF
 %token SELF
+%token STRING
 %token THEN
 %token TYPE
 %token UNIT
@@ -120,6 +121,7 @@ let monotype_atom :=
   | x = LIDENT; { ($symbolstartpos, $endpos), (Ast.TVar x) }
   | LPARENS; ARROW; RPARENS; { ($symbolstartpos, $endpos), Ast.TArrow }
   | REF; { ($symbolstartpos, $endpos), Ast.TRef }
+  | STRING; { ($symbolstartpos, $endpos), Ast.TString }
   | UNIT; { ($symbolstartpos, $endpos), Ast.TUnit }
   | LPARENS; ~ = monotype; RPARENS; { monotype }
 

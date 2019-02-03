@@ -137,6 +137,7 @@ let rec normalize checker tvars (_, node) =
   | Ast.TFloat -> Ok (Type.Prim Type.Float)
   | Ast.TInt -> Ok (Type.Prim Type.Int)
   | Ast.TRef -> Ok (Type.Prim Type.Ref)
+  | Ast.TString -> Ok (Type.Prim Type.String)
   | Ast.TUnit -> Ok (Type.Prim Type.Unit)
   | Ast.TNominal path ->
      let ident =

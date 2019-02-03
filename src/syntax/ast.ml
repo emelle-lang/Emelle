@@ -11,6 +11,7 @@ and 'a monotype' =
   | TFloat
   | TInt
   | TRef
+  | TString
   | TNominal of qual_id
   | TUnit
   | TVar of string

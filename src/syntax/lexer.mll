@@ -26,6 +26,7 @@
     Hashtbl.of_alist_exn
       (module String)
       [ "Ref", REF
+      ; "String", STRING
       ; "Unit", UNIT ]
 }
 
