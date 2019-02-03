@@ -25,9 +25,6 @@ and value =
 
 type frame = {
     data : value array;
-  }
-
-type t = {
     mutable block : Asm.block;
     mutable ip : int;
     proc : Asm.proc;
@@ -43,54 +40,54 @@ let eval_operand frame = function
   | Asm.Lit Literal.Unit -> Unit
   | Asm.Stack addr -> frame.data.(addr)
 
-let bump_ip t =
-  t.ip <- t.ip + 1
+let bump_ip frame =
+  frame.ip <- frame.ip + 1
 
-let break t label =
-  t.block <- Map.find_exn t.proc.Asm.blocks label;
-  t.ip <- 0
+let break frame label =
+  frame.block <- Map.find_exn frame.proc.Asm.blocks label;
+  frame.ip <- 0
 
-let rec eval_instr t file frame =
-  match Queue.get t.block.Asm.instrs t.ip with
+let rec eval_instr file frame =
+  match Queue.get frame.block.Asm.instrs frame.ip with
   | Asm.Assign(dest, lval, rval) ->
      begin match eval_operand frame lval with
      | Ref r -> r := eval_operand frame rval
      | _ -> failwith "Type error"
      end;
      frame.data.(dest) <- Unit;
-     bump_ip t
+     bump_ip frame
   | Asm.Box(dest, tag, ops) ->
      let data = Array.of_list (List.map ~f:(eval_operand frame) ops) in
      frame.data.(dest) <- Box { tag; data };
-     bump_ip t
+     bump_ip frame
   | Asm.Box_dummy(dest, size) ->
      let data = Array.create ~len:size Uninitialized in
      frame.data.(dest) <- Box { tag = 255; data };
-     bump_ip t
+     bump_ip frame
   | Asm.Call(dest, f, arg, args) ->
      let f = eval_operand frame f in
      let arg = eval_operand frame arg in
      let args = List.map ~f:(eval_operand frame) args in
      frame.data.(dest) <- apply_function file f (arg::args);
-     bump_ip t
+     bump_ip frame
   | Asm.Deref(dest, r) ->
      begin match eval_operand frame r with
      | Ref r -> frame.data.(dest) <- !r
      | _ -> failwith "Type error"
      end;
-     bump_ip t
+     bump_ip frame
   | Asm.Get(dest, data, idx) ->
      begin match eval_operand frame data with
      | Box { data; _ } -> frame.data.(dest) <- data.(idx)
      | _ -> failwith "Type error"
      end;
-     bump_ip t
+     bump_ip frame
   | Asm.Move(dest, data) ->
      frame.data.(dest) <- eval_operand frame data;
-     bump_ip t
+     bump_ip frame
   | Asm.Ref(dest, data) ->
      frame.data.(dest) <- Ref (ref (eval_operand frame data));
-     bump_ip t
+     bump_ip frame
   | Asm.Set_field(dest, idx, src) ->
      let src = eval_operand frame src in
      begin match eval_operand frame dest with
@@ -98,31 +95,31 @@ let rec eval_instr t file frame =
         data.(idx) <- src;
      | _ -> failwith "Type error"
      end;
-     bump_ip t
+     bump_ip frame
   | Asm.Set_tag(dest, tag) ->
      begin match eval_operand frame dest with
      | Box box -> box.tag <- tag;
      | _ -> failwith "Type error"
      end;
-     bump_ip t
+     bump_ip frame
   | Asm.Tag(dest, addr) ->
      begin match eval_operand frame addr with
      | Box { tag; _ } -> frame.data.(dest) <- Int tag
      | _ -> failwith "Type error"
      end;
-     bump_ip t
+     bump_ip frame
   | Asm.Break label ->
-     break t label
+     break frame label
   | Asm.Fail -> failwith "Pattern match failure"
   | Asm.Return op ->
-     t.return <- eval_operand frame op
+     frame.return <- eval_operand frame op
   | Asm.Switch(scrut, cases, else_case) ->
      let scrut = eval_operand frame scrut in
      begin match scrut with
      | Int tag ->
         let rec check = function
-          | [] -> break t else_case
-          | (i, conseq)::_ when i = tag -> break t conseq
+          | [] -> break frame else_case
+          | (i, conseq)::_ when i = tag -> break frame conseq
           | _::xs -> check xs in
         check cases
      | _ -> failwith "Unreachable"
@@ -142,7 +139,12 @@ and apply_function file value args =
        proc, closure, remaining_params, param_arg_pairs
     | _ -> failwith "Type error: Expected function" in
   let execute param_arg_pairs =
-    let frame = { data = Array.create ~len:proc.frame_size Uninitialized } in
+    let frame =
+      { data = Array.create ~len:proc.frame_size Uninitialized
+      ; proc
+      ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
+      ; ip = 0
+      ; return = Uninitialized } in
     (* Load arguments into stack frame *)
     List.iter param_arg_pairs ~f:(fun (param, arg) ->
         frame.data.(param) <- arg
@@ -151,17 +153,12 @@ and apply_function file value args =
     List.iteri proc.Asm.free_vars ~f:(fun i addr ->
         frame.data.(addr) <- proc_data.(i + 1)
       );
-    let ctx =
-      { proc
-      ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
-      ; ip = 0
-      ; return = Uninitialized } in
     let rec loop () =
-      match ctx.return with
+      match frame.return with
       | Uninitialized ->
-         eval_instr ctx file frame;
+         eval_instr file frame;
          loop ()
-      | _ -> ctx.return
+      | _ -> frame.return
     in loop () in
   let rec load_params acc params args =
     match params, args with
@@ -180,16 +177,16 @@ and apply_function file value args =
 
 let eval file =
   let proc = file.Asm.main in
-  let ctx =
-    { proc
+  let frame =
+    { data = Array.create ~len:proc.frame_size Uninitialized
+    ; proc
     ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
     ; ip = 0
     ; return = Uninitialized } in
-  let frame = { data = Array.create ~len:proc.frame_size Uninitialized } in
   let rec loop () =
-    match ctx.return with
+    match frame.return with
     | Uninitialized ->
-       eval_instr ctx file frame;
+       eval_instr file frame;
        loop ()
-    | _ -> ctx.return
+    | _ -> frame.return
   in loop ()
