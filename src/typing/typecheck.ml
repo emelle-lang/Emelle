@@ -119,13 +119,17 @@ let unify_many checker ty =
     ) ~init:(Ok ())
 
 (** Convert an Ast.monotype into an Type.t *)
-let rec normalize checker tvars (_, node) =
+let rec normalize checker tvars { Ast.ty_node =  node; _ } =
   let open Result.Monad_infix in
   match node with
   | Ast.TApp(constr, arg) ->
      normalize checker tvars constr >>= fun constr ->
      normalize checker tvars arg >>| fun arg ->
      Type.App(constr, arg)
+  | Ast.TApplied_arrow(dom, codom) ->
+     normalize checker tvars dom >>= fun dom ->
+     normalize checker tvars codom >>| fun codom ->
+     Type.arrow dom codom
   | Ast.TArrow -> Ok (Type.Prim Type.Arrow)
   | Ast.TRef -> Ok (Type.Prim Type.Ref)
   | Ast.TNominal path ->
@@ -172,7 +176,8 @@ let tvars_of_typeparams checker tvar_map kinds decls =
     | _ -> Error Sequence.empty
   in f tvar_map [] kinds decls
 
-let type_of_ast_polytype checker (Ast.Forall(typeparams, body)) =
+let type_of_ast_polytype
+      checker { Ast.polyty_params = typeparams; polyty_body = body; _ } =
   let open Result.Monad_infix in
   let tvar_map = Env.empty (module String) in
   let kinds = fresh_kinds_of_typeparams checker typeparams in
@@ -199,7 +204,7 @@ let set_levels_of_tvars product =
 (** Convert an [Ast.adt] into a [Type.adt] *)
 let type_adt_of_ast_adt checker adt =
   let open Result.Monad_infix in
-  let kinds = fresh_kinds_of_typeparams checker adt.Ast.typeparams in
+  let kinds = fresh_kinds_of_typeparams checker adt.Ast.adt_params in
   let kind = Kind.curry kinds Kind.Mono in
   let constr_map = Hashtbl.create (module String) in
   List.fold_right ~f:(fun (name, product) acc ->
@@ -208,7 +213,7 @@ let type_adt_of_ast_adt checker adt =
       | `Duplicate -> Error (Sequence.return (Message.Redefined_constr name))
       | `Ok ->
          let tvar_map = Env.empty (module String) in
-         let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.typeparams in
+         let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.adt_params in
          tvars_of_typeparams checker tvar_map kinds tparams
          >>= fun (tvar_map, tvar_list) ->
          List.fold_right ~f:(fun ty acc ->
@@ -221,15 +226,15 @@ let type_adt_of_ast_adt checker adt =
          >>| fun product ->
          let out_ty =
            Type.with_params
-             (Type.Nominal (checker.package.Package.name, adt.Ast.name))
+             (Type.Nominal (checker.package.Package.name, adt.Ast.adt_name))
              (List.map ~f:(fun var -> Type.Var var) tvar_list)
          in
          let _ = set_levels_of_tvars product in
          ((name, product, out_ty)::constr_list, idx - 1)
-    ) ~init:(Ok ([], List.length adt.Ast.constrs - 1)) adt.Ast.constrs
+    ) ~init:(Ok ([], List.length adt.Ast.adt_constrs - 1)) adt.Ast.adt_constrs
   >>| fun (constrs, _) ->
   let constrs = Array.of_list constrs in
-  { Type.name = adt.Ast.name
+  { Type.name = adt.Ast.adt_name
   ; adt_kind = kind
   ; constr_names = constr_map
   ; constrs }

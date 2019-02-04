@@ -71,9 +71,9 @@ let package :=
       exports = separated_list(COMMA, LIDENT);
     RPARENS;
     items = list(item);
-      { { Ast.ann = ($symbolstartpos, $endpos)
-        ; items = items
-        ; exports = exports } }
+      { { Ast.file_ann = ($symbolstartpos, $endpos)
+        ; file_items = items
+        ; file_exports = exports } }
 
 let item :=
   | LET; bindings = separated_list(AND, binding); { Ast.Let bindings }
@@ -86,7 +86,7 @@ let adt :=
     params = list(LIDENT);
     EQUALS; option(BAR);
     constrs = separated_list(BAR, constr);
-      { Ast.{ name = name; typeparams = params; constrs = constrs } }
+      { Ast.{ adt_name = name; adt_params = params; adt_constrs = constrs } }
 
 let constr :=
   | name = UIDENT; tys = separated_list(STAR, monotype); { (name, tys) }
@@ -101,39 +101,51 @@ let tvar_decl :=
 
 let polytype :=
   | FORALL; tvars = list(tvar_decl); DOT; ty = monotype;
-      { Ast.Forall(tvars, ty) }
+      { { Ast.polyty_ann = ($symbolstartpos, $endpos)
+        ; polyty_params = tvars
+        ; polyty_body = ty } }
 
 let monotype :=
   | dom = monotype_app; ARROW; codom = monotype;
       { let loc = ($symbolstartpos, $endpos) in
-        loc, Ast.TApp((loc, Ast.TApp((loc, Ast.TArrow), dom)), codom) }
+        { Ast.ty_ann = loc
+        ; ty_node = Ast.TApplied_arrow(dom, codom) } }
   | monotype_app
 
 let monotype_app :=
   | dom = monotype_app; codom = monotype_atom;
-      { ($symbolstartpos, $endpos), Ast.TApp(dom, codom) }
+      { { Ast.ty_ann = ($symbolstartpos, $endpos)
+        ; ty_node = Ast.TApp(dom, codom) } }
   | monotype_atom
 
 let monotype_atom :=
-  | x = qual_uid; { ($symbolstartpos, $endpos), (Ast.TNominal x) }
-  | x = LIDENT; { ($symbolstartpos, $endpos), (Ast.TVar x) }
-  | LPARENS; ARROW; RPARENS; { ($symbolstartpos, $endpos), Ast.TArrow }
-  | REF; { ($symbolstartpos, $endpos), Ast.TRef }
+  | x = qual_uid;
+      { { Ast.ty_ann = ($symbolstartpos, $endpos); ty_node = Ast.TNominal x } }
+  | x = LIDENT;
+      { { Ast.ty_ann = ($symbolstartpos, $endpos); ty_node = (Ast.TVar x) } }
+  | LPARENS; ARROW; RPARENS;
+      { { Ast.ty_ann = ($symbolstartpos, $endpos); ty_node = Ast.TArrow } }
+  | REF; { { Ast.ty_ann = ($symbolstartpos, $endpos); ty_node =  Ast.TRef } }
   | LPARENS; ~ = monotype; RPARENS; { monotype }
 
 let expr := expr_kw
 
 let expr_kw :=
   | CASE; test = expr; WITH; option(BAR); cases = separated_list(BAR, case);
-      { (($symbolstartpos, $endpos), Ast.Case(test, cases)) }
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node =  Ast.Case(test, cases) } }
   | FOREIGN; x = STRING_LIT; y = polytype;
-      { (($symbolstartpos, $endpos), Ast.Prim(x, y)) }
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Prim(x, y) } }
   | FUN; option(BAR); case = lambda_case; cases = list(BAR; lambda_case);
-      { (($symbolstartpos, $endpos), Ast.Lam(case, cases)) }
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Lam(case, cases) } }
   | LET; bindings = separated_list(AND, binding); IN; body = expr;
-      { (($symbolstartpos, $endpos), Ast.Let(bindings, body)) }
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node =  Ast.Let(bindings, body) } }
   | LET; REC; bindings = separated_list(AND, rec_binding); IN; body = expr;
-      { (($symbolstartpos, $endpos), Ast.Let_rec(bindings, body)) }
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Let_rec(bindings, body) } }
   | expr_seq
 
 let case :=
@@ -150,37 +162,61 @@ let rec_binding :=
 
 let expr_seq :=
   | s = expr_assn; SEMICOLON; t = expr;
-      { (($symbolstartpos, $endpos), Ast.Seq(s, t)) }
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Seq(s, t)} }
   | expr_assn
 
 let expr_assn :=
   | lval = expr_app; COLONEQUALS; rval = expr_assn;
-      { (($symbolstartpos, $endpos), Ast.Assign(lval, rval)) }
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Assign(lval, rval) } }
   | expr_app
 
 let expr_app :=
-  | f = expr_app; x = expr_atom; { (($symbolstartpos, $endpos), Ast.App(f, x)) }
+  | f = expr_app; x = expr_atom;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.App(f, x) } }
   | expr_atom
 
 let expr_atom :=
-  | ~ = qual_lid; { (($symbolstartpos, $endpos), Ast.Var qual_lid) }
-  | ~ = qual_uid; { (($symbolstartpos, $endpos), Ast.Constr qual_uid) }
-  | f = FLOAT_LIT; { (($symbolstartpos, $endpos), Ast.Lit (Literal.Float f)) }
-  | i = INT_LIT; { (($symbolstartpos, $endpos), Ast.Lit (Literal.Int i)) }
-  | s = STRING_LIT; { (($symbolstartpos, $endpos), Ast.Lit (Literal.String s)) }
-  | REF; { (($symbolstartpos, $endpos), Ast.Ref) }
-  | LPARENS; RPARENS; { (($symbolstartpos, $endpos), Ast.Lit Literal.Unit) }
-  | LPARENS; e = expr; RPARENS; { e }
+  | ~ = qual_lid;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Var qual_lid } }
+  | ~ = qual_uid;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Constr qual_uid } }
+  | f = FLOAT_LIT;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Lit (Literal.Float f) } }
+  | i = INT_LIT;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Lit (Literal.Int i) } }
+  | s = STRING_LIT;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Lit (Literal.String s)} }
+  | REF; { { Ast.expr_ann = ($symbolstartpos, $endpos); expr_node =  Ast.Ref } }
+  | LPARENS; RPARENS;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node =  Ast.Lit Literal.Unit } }
+  | LPARENS; ~ = expr; RPARENS; { expr }
 
 let pattern :=
   | constr = qual_uid; pats = nonempty_list(pattern_2);
-      { (($symbolstartpos, $endpos), Ast.Con(constr, pats)) }
-  | REF; pat = pattern_2; { (($symbolstartpos, $endpos), Ast.Deref pat) }
+      { { Ast.pat_ann = ($symbolstartpos, $endpos)
+        ; pat_node = Ast.Con(constr, pats) } }
+  | REF; pat = pattern_2;
+      { { Ast.pat_ann = ($symbolstartpos, $endpos)
+        ; pat_node = Ast.Deref pat} }
   | pattern_2
 
 let pattern_2 :=
-  | ~ = qual_uid; { (($symbolstartpos, $endpos), Ast.Con(qual_uid, [])) }
-  | id = LIDENT; { (($symbolstartpos, $endpos), Ast.Var id) }
-  | UNDERSCORE; { (($symbolstartpos, $endpos), Ast.Wild) }
-  | LPARENS; RPARENS; { (($symbolstartpos, $endpos), Ast.Unit) }
+  | ~ = qual_uid;
+      { { Ast.pat_ann = ($symbolstartpos, $endpos)
+        ; pat_node = Ast.Con(qual_uid, []) } }
+  | id = LIDENT;
+      { { Ast.pat_ann = ($symbolstartpos, $endpos); pat_node = Ast.Var id } }
+  | UNDERSCORE;
+      { { Ast.pat_ann = ($symbolstartpos, $endpos); pat_node = Ast.Wild } }
+  | LPARENS; RPARENS;
+      { { Ast.pat_ann = ($symbolstartpos, $endpos); pat_node = Ast.Unit } }
   | LPARENS; pat = pattern; RPARENS; { pat }

@@ -4,9 +4,14 @@ type qual_id =
   | External of string * string
   | Internal of string
 
-type 'a monotype = 'a * 'a monotype'
+type 'a monotype = {
+    ty_ann : 'a;
+    ty_node : 'a monotype';
+  }
+
 and 'a monotype' =
   | TApp of 'a monotype * 'a monotype
+  | TApplied_arrow of 'a monotype * 'a monotype
   | TArrow
   | TRef
   | TNominal of qual_id
@@ -16,9 +21,17 @@ type typevar_decl =
   | Pure
   | Impure of int
 
-type 'a polytype = Forall of (string * typevar_decl) list * 'a monotype
+type 'a polytype = {
+    polyty_ann : 'a;
+    polyty_params : (string * typevar_decl) list;
+    polyty_body : 'a monotype;
+  }
 
-type 'a pattern = 'a * 'a pattern'
+type 'a pattern = {
+    pat_ann : 'a;
+    pat_node : 'a pattern';
+  }
+
 and 'a pattern' =
   | Con of qual_id * 'a pattern list
   | Deref of 'a pattern
@@ -26,7 +39,11 @@ and 'a pattern' =
   | Var of string
   | Wild
 
-type 'a expr = 'a * 'a expr'
+type 'a expr = {
+    expr_ann : 'a;
+    expr_node : 'a expr';
+  }
+
 and 'a expr' =
   | App of 'a expr * 'a expr
   | Assign of 'a expr * 'a expr
@@ -40,12 +57,13 @@ and 'a expr' =
   | Ref
   | Seq of 'a expr * 'a expr
   | Var of qual_id
+
 and 'a lambda_case = 'a pattern * 'a pattern list * 'a expr
 
 type 'a adt = {
-    name : string;
-    typeparams : string list;
-    constrs : (string * 'a monotype list) list
+    adt_name : string;
+    adt_params : string list;
+    adt_constrs : (string * 'a monotype list) list
   }
 
 type 'a item =
@@ -54,7 +72,7 @@ type 'a item =
   | Type of 'a adt * 'a adt list
 
 type 'a file = {
-    ann : 'a;
-    exports : string list;
-    items : 'a item list
+    file_ann : 'a;
+    file_exports : string list;
+    file_items : 'a item list
   }

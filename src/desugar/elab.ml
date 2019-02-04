@@ -30,9 +30,9 @@ let fresh_ident st name = Ident.fresh st.vargen name
 (** [pattern_of_ast_pattern state map reg ast_pat] converts [ast_pat] from an
     [Ast.pattern] to [Term.ml] while collecting bound identifiers in [map],
     returning [Error] if a data constructor or type isn't defined. *)
-let rec pattern_of_ast_pattern st map id_opt (ann, node) =
+let rec pattern_of_ast_pattern st map id_opt ast_pat =
   let open Result.Monad_infix in
-  match node with
+  match ast_pat.Ast.pat_node with
   | Ast.Con(constr_path, pats) ->
      let f next acc =
        acc >>= fun (pats, map) ->
@@ -43,19 +43,19 @@ let rec pattern_of_ast_pattern st map id_opt (ann, node) =
      | None -> Error (Sequence.return (Message.Unresolved_path constr_path))
      | Some (_, (adt, idx)) ->
         List.fold_right ~f:f ~init:(Ok ([], map)) pats >>| fun (pats, map) ->
-        ( { Pattern.ann
+        ( { Pattern.ann = ast_pat.Ast.pat_ann
           ; node = Con(adt, idx, pats)
           ; id = id_opt }
         , map)
      end
   | Ast.Deref pat ->
      pattern_of_ast_pattern st map None pat >>| fun (pat, map) ->
-     ( { Pattern.ann
+     ( { Pattern.ann = ast_pat.Ast.pat_ann
        ; node = Deref pat
        ; id = id_opt }
      , map)
   | Ast.Unit ->
-     Ok ( { Pattern.ann
+     Ok ( { Pattern.ann = ast_pat.Ast.pat_ann
           ; node = Unit
           ; id = id_opt }
         , map )
@@ -66,14 +66,19 @@ let rec pattern_of_ast_pattern st map id_opt (ann, node) =
        | None -> fresh_ident st (Some name)
      in
      begin match Map.add map ~key:name ~data:id with
-     | `Ok map -> Ok ({ Pattern.ann; node = Wild; id = Some id }, map)
+     | `Ok map ->
+        Ok ( { Pattern.ann = ast_pat.Ast.pat_ann
+             ; node = Wild
+             ; id = Some id }
+           , map )
      | `Duplicate -> Error (Sequence.return (Message.Redefined_name name))
      end
-  | Ast.Wild -> Ok ({ Pattern.ann; node = Wild; id = id_opt }, map)
+  | Ast.Wild ->
+     Ok ({ Pattern.ann = ast_pat.Ast.pat_ann; node = Wild; id = id_opt }, map)
 
 (** [term_of_expr desugarer env expr] converts [expr] from an [Ast.expr] to a
     [Term.t]. *)
-let rec term_of_expr st env (ann, node) : ('a Term.t, 'b) Result.t =
+let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
   let open Result.Monad_infix in
   let term =
     match node with
@@ -255,7 +260,7 @@ and elab_let_bindings self env bindings =
 let elab typechecker env package packages ast_file =
   let open Result.Monad_infix in
   let elab = create package packages in
-  List.fold ~f:(fun acc next ->
+  List.fold ast_file.Ast.file_items ~init:(Ok (env, [])) ~f:(fun acc next ->
       acc >>= fun (env, list) ->
       match next with
       | Ast.Let bindings ->
@@ -278,7 +283,7 @@ let elab typechecker env package packages ast_file =
              acc >>= fun () ->
              let kvar = Kind.fresh_var typechecker.Typecheck.kvargen in
              Package.add_typedef
-               package adt.Ast.name (Package.Todo (Kind.Var kvar))
+               package adt.Ast.adt_name (Package.Todo (Kind.Var kvar))
            ) ~init:(Ok ()) (adt::adts) >>= fun () ->
          List.fold ~f:(fun acc adt ->
              acc >>= fun () ->
@@ -303,9 +308,9 @@ let elab typechecker env package packages ast_file =
                    Ok ()
            ) ~init:(Ok ()) (adt::adts) >>| fun () ->
          (env, list)
-    ) ~init:(Ok (env, [])) ast_file.Ast.items
+    )
   >>| fun (env, list) ->
-  { Term.top_ann = ast_file.Ast.ann
-  ; exports = ast_file.Ast.exports
+  { Term.top_ann = ast_file.Ast.file_ann
+  ; exports = ast_file.Ast.file_exports
   ; env = env
   ; items = List.rev list }
