@@ -8,6 +8,7 @@ open Base
 type ty_state =
   | Compiled of Type.decl
   | Todo of Kind.t
+  | Prim of Type.prim
 
 type t =
   { name : string
@@ -17,7 +18,14 @@ type t =
 
 let create name =
   { name
-  ; typedefs = Hashtbl.create (module String)
+  ; typedefs =
+      Hashtbl.of_alist_exn
+        (module String)
+        [ "Char", ref (Prim Type.Char)
+        ; "Float", ref (Prim Type.Float)
+        ; "Int", ref (Prim Type.Int)
+        ; "String", ref (Prim Type.String)
+        ; "Unit", ref (Prim Type.Unit) ]
   ; constrs = Hashtbl.create (module String)
   ; vals = Hashtbl.create (module String) }
 
@@ -37,6 +45,7 @@ let kind_of_ident self name =
      | Compiled (Type.Manifest adt) -> Some (Type.kind_of_adt adt)
      | Compiled (Type.Abstract kind) -> Some kind
      | Todo kind -> Some kind
+     | Prim prim -> Some (Type.kind_of_prim prim)
 
 let add_typedef self name typedef =
   match Hashtbl.add self.typedefs ~key:name ~data:(ref typedef) with

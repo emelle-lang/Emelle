@@ -8,12 +8,8 @@ type 'a monotype = 'a * 'a monotype'
 and 'a monotype' =
   | TApp of 'a monotype * 'a monotype
   | TArrow
-  | TFloat
-  | TInt
   | TRef
-  | TString
   | TNominal of qual_id
-  | TUnit
   | TVar of string
 
 type typevar_decl =

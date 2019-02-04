@@ -101,6 +101,15 @@ let type_of_constr adt constr =
 
 let kind_of_adt adt = adt.adt_kind
 
+let kind_of_prim = function
+  | Arrow -> Kind.Poly(Kind.Mono, Kind.Poly(Kind.Mono, Kind.Mono))
+  | Char -> Kind.Mono
+  | Float -> Kind.Mono
+  | Int -> Kind.Mono
+  | Ref -> Kind.Poly(Kind.Mono, Kind.Mono)
+  | String -> Kind.Mono
+  | Unit -> Kind.Mono
+
 (** [occurs tvar ty] performs the occurs check, returning true if [tyvar] occurs
     in [ty]. It ignores universally quantified type variables and adjusts the
     levels of unassigned typevars when necessary. *)

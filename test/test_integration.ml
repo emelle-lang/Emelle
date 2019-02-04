@@ -303,6 +303,19 @@ let tests =
       let puts = foreign "puts" forall a . a -> Unit
 
       let () = puts "Hello world!"
+     |}
+  ; {|()
+      type IntPair = Pair Int * Int
+
+      let pair = Pair 0 2
+
+     |}
+  ; {|()
+      type Product a b = Pair a * b
+
+      type Foo = Foo Product Int String
+
+      let Pair i s = Pair 2 "foobar"
      |} ]
 
 let () =

@@ -70,14 +70,7 @@ let rec kind_of_type checker ty =
      | Some kind -> Ok kind
      | None -> Error (Sequence.return (Message.Unresolved_type path))
      end
-  | Type.Prim Type.Arrow ->
-     Ok (Kind.Poly(Kind.Mono, Kind.Poly(Kind.Mono, Kind.Mono)))
-  | Type.Prim Type.Char -> Ok Kind.Mono
-  | Type.Prim Type.Float -> Ok Kind.Mono
-  | Type.Prim Type.Int -> Ok Kind.Mono
-  | Type.Prim Type.Ref -> Ok (Kind.Poly(Kind.Mono, Kind.Mono))
-  | Type.Prim Type.String -> Ok Kind.Mono
-  | Type.Prim Type.Unit -> Ok Kind.Mono
+  | Type.Prim prim -> Ok (Type.kind_of_prim prim)
   | Type.Var { ty = Some ty; _ } -> kind_of_type checker ty
   | Type.Var { ty = None; kind; _ } -> Ok kind
 
@@ -134,11 +127,7 @@ let rec normalize checker tvars (_, node) =
      normalize checker tvars arg >>| fun arg ->
      Type.App(constr, arg)
   | Ast.TArrow -> Ok (Type.Prim Type.Arrow)
-  | Ast.TFloat -> Ok (Type.Prim Type.Float)
-  | Ast.TInt -> Ok (Type.Prim Type.Int)
   | Ast.TRef -> Ok (Type.Prim Type.Ref)
-  | Ast.TString -> Ok (Type.Prim Type.String)
-  | Ast.TUnit -> Ok (Type.Prim Type.Unit)
   | Ast.TNominal path ->
      let ident =
        match path with
@@ -147,6 +136,7 @@ let rec normalize checker tvars (_, node) =
      in
      begin
        match find Package.find_typedef checker ident with
+       | Some { contents = Package.Prim prim } -> Ok (Type.Prim prim)
        | Some _ -> Ok (Type.Nominal ident)
        | None -> Error (Sequence.return (Message.Unresolved_path path))
      end

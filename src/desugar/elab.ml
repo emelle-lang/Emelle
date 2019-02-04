@@ -297,6 +297,10 @@ let elab typechecker env package packages ast_file =
                    Package.add_constrs package adt >>= fun () ->
                    ptr := Package.Compiled (Type.Manifest adt);
                    Ok ()
+                | Package.Prim _ ->
+                   Package.add_constrs package adt >>= fun () ->
+                   ptr := Package.Compiled (Type.Manifest adt);
+                   Ok ()
            ) ~init:(Ok ()) (adt::adts) >>| fun () ->
          (env, list)
     ) ~init:(Ok (env, [])) ast_file.Ast.items
