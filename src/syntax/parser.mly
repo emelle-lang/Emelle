@@ -164,10 +164,16 @@ let lambda_case :=
   | p = pattern_2; ps = list(pattern_2); ARROW; e = expr; { (p, ps, e) }
 
 let binding :=
-  | p = pattern; EQUALS; e = expr; { (p, e) }
+  | p = pattern; EQUALS; e = expr;
+      { { Ast.let_ann = ($symbolstartpos, $endpos)
+        ; let_lhs = p
+        ; let_rhs = e } }
 
 let rec_binding :=
-  | id = LIDENT; EQUALS; e = expr; { (id, e) }
+  | id = LIDENT; EQUALS; e = expr;
+      { { Ast.rec_ann = ($symbolstartpos, $endpos)
+        ; rec_lhs = id
+        ; rec_rhs = e } }
 
 let expr_seq :=
   | s = expr_assn; SEMICOLON; t = expr;

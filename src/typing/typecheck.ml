@@ -46,13 +46,13 @@ let rec unify_kinds l r =
      unify_kinds k1 k2
   | Kind.Var kvar, kind | kind, Kind.Var kvar ->
      if Kind.occurs kvar kind then
-       Error (Sequence.return (Message.Kind_unification_fail(l, r)))
+       Error (Message.Kind_unification_fail(l, r))
      else (
        kvar.kind <- Some kind;
        Ok ()
      )
   | Kind.Mono, Kind.Poly _ | Kind.Poly _, Kind.Mono ->
-     Error (Sequence.return (Message.Kind_unification_fail(l, r)))
+     Error (Message.Kind_unification_fail(l, r))
 
 (** [kind_of_type typechecker ty] infers the kind of [ty], returning a result
     with any errors. *)
@@ -68,7 +68,7 @@ let rec kind_of_type checker ty =
   | Type.Nominal path ->
      begin match find Package.kind_of_ident checker path with
      | Some kind -> Ok kind
-     | None -> Error (Sequence.return (Message.Unresolved_type path))
+     | None -> Error (Message.Unresolved_type path)
      end
   | Type.Prim prim -> Ok (Type.kind_of_prim prim)
   | Type.Var { ty = Some ty; _ } -> kind_of_type checker ty
@@ -87,7 +87,7 @@ let rec unify_types checker lhs rhs =
          match unify_types checker lcon rcon, unify_types checker larg rarg with
          | Ok (), Ok () -> Ok ()
          | Error e, Ok () | Ok (), Error e -> Error e
-         | Error e1, Error e2 -> Error (Sequence.append e1 e2)
+         | Error e1, Error e2 -> Error (Message.And_error(e1, e2))
        end
     | Type.Nominal lstr, Type.Nominal rstr
          when (Path.compare lstr rstr) = 0 ->
@@ -102,12 +102,12 @@ let rec unify_types checker lhs rhs =
        unify_types checker ty0 ty1
     | Type.Var var, ty | ty, Type.Var var ->
        if Type.occurs var ty then
-         Error (Sequence.return (Message.Type_unification_fail(lhs, rhs)))
+         Error (Message.Type_unification_fail(lhs, rhs))
        else
          kind_of_type checker ty >>= fun kind ->
          unify_kinds kind var.kind >>| fun () ->
          var.ty <- Some ty
-    | _ -> Error (Sequence.return (Message.Type_unification_fail(lhs, rhs)))
+    | _ -> Error (Message.Type_unification_fail(lhs, rhs))
 
 let unify_many checker ty =
   List.fold ~f:(fun acc next ->
@@ -115,11 +115,11 @@ let unify_many checker ty =
       match acc, result with
       | Ok (), Ok () -> Ok ()
       | Ok (), Error e | Error e, Ok () -> Error e
-      | Error e1, Error e2 -> Error (Sequence.append e1 e2)
+      | Error e1, Error e2 -> Error (Message.And_error(e1, e2))
     ) ~init:(Ok ())
 
 (** Convert an Ast.monotype into an Type.t *)
-let rec normalize checker tvars { Ast.ty_node =  node; _ } =
+let rec normalize checker tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
   let open Result.Monad_infix in
   match node with
   | Ast.TApp(constr, arg) ->
@@ -142,12 +142,12 @@ let rec normalize checker tvars { Ast.ty_node =  node; _ } =
        match find Package.find_typedef checker ident with
        | Some { contents = Package.Prim prim } -> Ok (Type.Prim prim)
        | Some _ -> Ok (Type.Nominal ident)
-       | None -> Error (Sequence.return (Message.Unresolved_path path))
+       | None -> Message.error ann (Message.Unresolved_path path)
      end
   | Ast.TVar name ->
      match Env.find tvars name with
      | Some tvar -> Ok tvar
-     | None -> Error (Sequence.return (Message.Unresolved_typevar name))
+     | None -> Message.error ann (Message.Unresolved_typevar name)
 
 let fresh_kinds_of_typeparams checker =
   List.map ~f:(fun _ -> (Kind.Var (Kind.fresh_var checker.kvargen)))
@@ -166,22 +166,25 @@ let tvars_of_typeparams checker tvar_map kinds decls =
               checker.tvargen Type.Impure Type.Univ i kind
        in
        begin match Env.add tvar_map str (Type.Var tvar) with
-       | None -> Error (Sequence.return (Message.Redefined_typevar str))
+       | None -> Error (Message.Redefined_typevar str)
        | Some tvar_map ->
           (* Fold RIGHT, not left! *)
           f tvar_map tvar_list kinds decls >>| fun (tvar_map, tvar_list) ->
           (tvar_map, tvar::tvar_list)
        end
     | [], [] -> Ok (tvar_map, tvar_list)
-    | _ -> Error Sequence.empty
+    | _ -> Error (Message.Unreachable_error "")
   in f tvar_map [] kinds decls
 
 let type_of_ast_polytype
-      checker { Ast.polyty_params = typeparams; polyty_body = body; _ } =
+      checker
+      { Ast.polyty_params = typeparams
+      ; polyty_body = body
+      ; polyty_ann = ann } =
   let open Result.Monad_infix in
-  let tvar_map = Env.empty (module String) in
-  let kinds = fresh_kinds_of_typeparams checker typeparams in
-  tvars_of_typeparams checker tvar_map kinds typeparams
+  (let tvar_map = Env.empty (module String) in
+   let kinds = fresh_kinds_of_typeparams checker typeparams in
+   tvars_of_typeparams checker tvar_map kinds typeparams) |> Message.at ann
   >>= fun (tvar_map, _) ->
   normalize checker tvar_map body
 
@@ -196,8 +199,7 @@ let set_levels_of_tvars product =
          tvar.Type.lam_level <- idx
       | _ -> ()
     in function
-    | Type.App(Type.Prim Type.Ref, ty) ->
-       f ty
+    | Type.App(Type.Prim Type.Ref, ty) -> f ty
     | _ -> ()
   in List.fold ~f:(fun idx ty -> helper idx ty; idx + 1) ~init:0 product
 
@@ -210,32 +212,33 @@ let type_adt_of_ast_adt checker adt =
   List.fold_right
     adt.Ast.adt_datacons
     ~init:(Ok ([], List.length adt.Ast.adt_datacons - 1))
-    ~f:(fun { Ast.datacon_name = name; datacon_product = product; _ } acc ->
+    ~f:(fun { Ast.datacon_name = name
+            ; datacon_product = product
+            ; datacon_ann = ann } acc ->
       acc >>= fun (constr_list, idx) ->
       match Hashtbl.add constr_map ~key:name ~data:idx with
-      | `Duplicate -> Error (Sequence.return (Message.Redefined_constr name))
+      | `Duplicate -> Message.error ann (Message.Redefined_constr name)
       | `Ok ->
-         let tvar_map = Env.empty (module String) in
-         let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.adt_params in
-         tvars_of_typeparams checker tvar_map kinds tparams
-         >>= fun (tvar_map, tvar_list) ->
-         List.fold_right ~f:(fun ty acc ->
-             acc >>= fun products ->
-             normalize checker tvar_map ty >>= fun ty ->
-             kind_of_type checker ty >>= fun kind ->
-             unify_kinds kind Kind.Mono >>| fun () ->
-             ty::products
-           ) ~init:(Ok []) product
-         >>| fun product ->
-         let out_ty =
-           Type.with_params
-             (Type.Nominal (checker.package.Package.name, adt.Ast.adt_name))
-             (List.map ~f:(fun var -> Type.Var var) tvar_list)
-         in
-         let _ = set_levels_of_tvars product in
-         ((name, product, out_ty)::constr_list, idx - 1)
-    )
-  >>| fun (datacons, _) ->
+         (let tvar_map = Env.empty (module String) in
+          let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.adt_params in
+          Message.at ann (tvars_of_typeparams checker tvar_map kinds tparams)
+          >>= fun (tvar_map, tvar_list) ->
+          List.fold_right ~f:(fun ty acc ->
+              acc >>= fun products ->
+              normalize checker tvar_map ty >>= fun ty ->
+              Message.at ann (kind_of_type checker ty) >>= fun kind ->
+              Message.at ann (unify_kinds kind Kind.Mono) >>| fun () ->
+              ty::products
+            ) ~init:(Ok []) product
+          >>| fun product ->
+          let out_ty =
+            Type.with_params
+              (Type.Nominal (checker.package.Package.name, adt.Ast.adt_name))
+              (List.map ~f:(fun var -> Type.Var var) tvar_list)
+          in
+          let _ = set_levels_of_tvars product in
+          ((name, product, out_ty)::constr_list, idx - 1))
+    ) >>| fun (datacons, _) ->
   let datacons = Array.of_list datacons in
   { Type.name = adt.Ast.adt_name
   ; adt_kind = kind
@@ -324,12 +327,14 @@ let rec infer_pattern checker map ty pat =
           alternative *)
        match Map.find map id with
        | Some ty2 ->
-          unify_types checker ty ty2 >>| fun () -> map
+          Message.at pat.Pattern.ann (unify_types checker ty ty2)
+          >>| fun () -> map
        | None ->
           match Map.add map ~key:id ~data:ty with
           | `Ok map -> Ok map
           | `Duplicate ->
-             Error (Sequence.return (Message.Unreachable "infer_pattern dup"))
+             Message.error pat.Pattern.ann
+               (Message.Unreachable_error "infer_pattern dup")
   in
   match pat.Pattern.node with
   | Pattern.Con(adt, idx, pats) ->
@@ -337,15 +342,13 @@ let rec infer_pattern checker map ty pat =
      let (_, products, adt_ty) = adt.Type.datacons.(idx) in
      let nom_ty = inst checker tvar_map adt_ty in
      let products = List.map ~f:(inst checker tvar_map) products in
-     unify_types checker ty nom_ty >>= fun () ->
+     Message.at pat.Pattern.ann (unify_types checker ty nom_ty) >>= fun () ->
      type_binding pat >>= fun map ->
      let rec f map pats tys =
        match pats, tys with
        | [], [] -> Ok map
-       | [], _  ->
-          Error (Sequence.return (Message.Not_enough_fields))
-       | _, [] ->
-          Error (Sequence.return (Message.Too_many_fields))
+       | [], _  -> Message.error pat.Pattern.ann (Message.Not_enough_fields)
+       | _, [] -> Message.error pat.Pattern.ann (Message.Too_many_fields)
        | pat::pats, ty::tys ->
           infer_pattern checker map ty pat >>= fun map ->
           f map pats tys
@@ -354,12 +357,12 @@ let rec infer_pattern checker map ty pat =
      let tvar = fresh_tvar checker in
      make_impure checker tvar;
      let ref_ty = Type.App(Type.Prim Type.Ref, tvar) in
-     unify_types checker ty ref_ty >>= fun () ->
+     Message.at pat.Pattern.ann (unify_types checker ty ref_ty) >>= fun () ->
      type_binding pat >>= fun map ->
      infer_pattern checker map tvar subpat
   | Pattern.Unit ->
-     unify_types checker ty (Type.Prim Type.Unit) >>| fun () ->
-     map
+     Message.at pat.Pattern.ann (unify_types checker ty (Type.Prim Type.Unit))
+     >>| fun () -> map
   | Pattern.Wild -> type_binding pat
   | Pattern.Or(p1, p2) ->
      infer_pattern checker map ty p1 >>= fun map1 ->
@@ -367,8 +370,9 @@ let rec infer_pattern checker map ty pat =
      Map.fold2 map1 map2 ~init:(Ok ()) ~f:(fun ~key:_ ~data acc ->
          acc >>= fun () ->
          match data with
-         | `Both(t1, t2) -> unify_types checker t1 t2
-         | _ -> Error (Sequence.return (Message.Unreachable "f"))
+         | `Both(t1, t2) ->
+            Message.at pat.Pattern.ann (unify_types checker t1 t2)
+         | _ -> Message.error pat.Pattern.ann (Message.Unreachable_error "f")
        ) >>| fun () ->
      Map.merge_skewed map1 map ~combine:(fun ~key:_ _ v -> v)
 
@@ -382,21 +386,21 @@ let rec infer_term checker Term.{ term; ann } =
      | (Ok f, Ok x) ->
         let var = fresh_tvar checker in
         Type.decr_lam_levels checker.lam_level f.Typedtree.ty;
-        let result =
-          unify_types checker f.Typedtree.ty (Type.arrow x.Typedtree.ty var)
-        in
-        result >>| fun () ->
+        Message.at ann
+          (unify_types checker f.Typedtree.ty (Type.arrow x.Typedtree.ty var))
+        >>| fun () ->
         { Typedtree.ann; ty = var; expr = Typedtree.App(f, x) }
-     | (Error f_err, Error x_err) -> Error (Sequence.append f_err x_err)
+     | (Error f_err, Error x_err) -> Error (Message.And(f_err, x_err))
      | (err, Ok _) | (Ok _, err) -> err
      end
 
   | Term.Assign(lval, rval) ->
      infer_term checker lval >>= fun lval ->
      infer_term checker rval >>= fun rval ->
-     unify_types checker
-       lval.Typedtree.ty
-       (Type.App(Type.Prim Type.Ref, rval.Typedtree.ty)) >>| fun () ->
+     Message.at ann
+       (unify_types checker
+          lval.Typedtree.ty
+          (Type.App(Type.Prim Type.Ref, rval.Typedtree.ty))) >>| fun () ->
      make_impure checker rval.Typedtree.ty;
      { Typedtree.ann
      ; ty = Type.Prim Type.Unit
@@ -415,7 +419,8 @@ let rec infer_term checker Term.{ term; ann } =
          acc >>= fun (idx, matrix, branches) ->
          infer_branch checker scruts pats >>= fun () ->
          infer_term checker consequent >>= fun consequent ->
-         unify_types checker consequent.Typedtree.ty out_ty >>| fun () ->
+         Message.at ann (unify_types checker consequent.Typedtree.ty out_ty)
+         >>| fun () ->
          ( idx - 1
          , { Pattern.patterns = pats
            ; bindings = Map.empty (module Ident)
@@ -443,10 +448,10 @@ let rec infer_term checker Term.{ term; ann } =
      in_new_lam_level (fun checker ->
          let var = fresh_tvar checker in
          Hashtbl.add_exn checker.env ~key:id ~data:var;
-         infer_term checker body >>= fun body ->
-         Ok { Typedtree.ann
-            ; ty = Type.arrow var body.Typedtree.ty
-            ; expr = Typedtree.Lam(id, body) }
+         infer_term checker body >>| fun body ->
+         { Typedtree.ann
+         ; ty = Type.arrow var body.Typedtree.ty
+         ; expr = Typedtree.Lam(id, body) }
        ) checker
 
   | Term.Let(lhs, rhs, body) ->
@@ -502,7 +507,8 @@ let rec infer_term checker Term.{ term; ann } =
 
   | Term.Seq(s, t) ->
      infer_term checker s >>= fun s ->
-     unify_types checker s.Typedtree.ty (Type.Prim Type.Unit) >>= fun () ->
+     Message.at ann (unify_types checker s.Typedtree.ty (Type.Prim Type.Unit))
+     >>= fun () ->
      infer_term checker t >>| fun t ->
      { Typedtree.ann; ty = t.Typedtree.ty; expr = Typedtree.Seq(s, t) }
 
@@ -512,7 +518,7 @@ let rec infer_term checker Term.{ term; ann } =
         Ok { Typedtree.ann
            ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
            ; expr = Typedtree.Local_var id }
-     | None -> Message.unreachable "Tc expr var"
+     | None -> Message.error ann (Message.Unreachable_error "Tc expr var")
 
 and infer_branch checker scruts pats =
   let open Result.Monad_infix in
@@ -539,19 +545,21 @@ and infer_rec_bindings checker bindings =
   let open Result.Monad_infix in
   in_new_let_level (fun checker ->
       (* Associate each new binding with a fresh type variable *)
-      let f (lhs, _) =
+      let f { Term.rec_lhs = lhs; _ } =
         Hashtbl.add_exn checker.env ~key:lhs ~data:(fresh_tvar checker)
       in
       List.iter ~f:f bindings;
       (* Type infer the RHS of each new binding and unify the result with
          the type variable *)
-      let f (lhs, rhs) acc =
+      let f { Term.rec_ann = ann; rec_lhs = lhs; rec_rhs = rhs } acc =
         let tvar = Hashtbl.find_exn checker.env lhs in
         infer_term checker rhs >>= fun rhs ->
-        match acc, unify_types checker tvar rhs.Typedtree.ty with
+        match
+          acc, Message.at ann (unify_types checker tvar rhs.Typedtree.ty)
+        with
         | Ok acc, Ok () -> Ok ((lhs, rhs)::acc)
         | Ok _, Error e | Error e, Ok () -> Error e
-        | Error e1, Error e2 -> Error (Sequence.append e1 e2)
+        | Error e1, Error e2 -> Error (Message.And(e1, e2))
       in List.fold_right ~f:f ~init:(Ok []) bindings
     ) checker
 

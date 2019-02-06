@@ -92,7 +92,7 @@ type 'a rec_def =
   | Rec_fun of 'a Anf.proc
 
 let rec compile_opcode ctx dest anf ~cont
-        : (Ir.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
+        : (Ir.Label.t * Ssa.jump, 'a Message.t) Result.t =
   let open Result.Let_syntax in
   match anf with
   | Anf.Assign(lval, rval) ->
@@ -174,7 +174,7 @@ let rec compile_opcode ctx dest anf ~cont
      cont ctx
 
 and compile_instr ctx anf
-    : (Ir.Label.t * Ssa.jump, Message.error Sequence.t) Result.t =
+    : (Ir.Label.t * Ssa.jump, 'a Message.t) Result.t =
   let open Result.Let_syntax in
   match anf.Anf.instr with
   | Anf.Let(reg, op, next) ->
@@ -193,7 +193,7 @@ and compile_instr ctx anf
                 Ok (Rec_box(tag, list), List.length list)
              | Anf.Fun proc ->
                 Ok (Rec_fun proc, List.length proc.Anf.env + 1)
-             | _ -> Error (Sequence.return Message.Unsafe_let_rec) in
+             | _ -> Message.error anf.Anf.ann Message.Unsafe_let_rec in
            Queue.enqueue ctx.instrs (Ssa.Box_dummy(reg, size));
            (reg, def)::list
          end in

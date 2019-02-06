@@ -2,6 +2,7 @@ open Base
 
 type error =
   | Abstract_type of Path.t
+  | And_error of error * error
   | Kind_unification_fail of Kind.t * Kind.t
   | Lexer_error of string
   | Mismatched_arity
@@ -15,11 +16,28 @@ type error =
   | Type_unification_fail of Type.t * Type.t
   | Unimplemented of string
   | Unknown_constr of Path.t * string
-  | Unreachable of string
+  | Unreachable_error of string
   | Unresolved_id of Path.t
   | Unresolved_path of Ast.qual_id
   | Unresolved_type of Path.t
   | Unresolved_typevar of string
   | Unsafe_let_rec
 
-let unreachable str = Error (Sequence.return (Unreachable str))
+type 'a diagnostic = {
+    loc : 'a;
+    error : error;
+  }
+
+type 'a t =
+  | And of 'a t * 'a t
+  | Diagnostic of 'a diagnostic
+  | Unreachable of string
+
+let error loc error =
+  Error (Diagnostic { loc; error })
+
+let at loc = function
+  | Ok x -> Ok x
+  | Error e -> error loc e
+
+let unreachable str = Error (Unreachable str)

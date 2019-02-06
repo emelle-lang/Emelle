@@ -50,8 +50,8 @@ and 'a expr' =
   | Case of 'a expr * ('a pattern * 'a expr) list
   | Constr of qual_id
   | Lam of 'a lambda_case * 'a lambda_case list
-  | Let of ('a pattern * 'a expr) list * 'a expr
-  | Let_rec of (string * 'a expr) list * 'a expr
+  | Let of 'a let_binding list * 'a expr
+  | Let_rec of 'a rec_binding list * 'a expr
   | Lit of Literal.t
   | Prim of string * 'a polytype
   | Ref
@@ -59,6 +59,18 @@ and 'a expr' =
   | Var of qual_id
 
 and 'a lambda_case = 'a pattern * 'a pattern list * 'a expr
+
+and 'a let_binding = {
+    let_ann : 'a;
+    let_lhs : 'a pattern;
+    let_rhs : 'a expr;
+  }
+
+and 'a rec_binding = {
+    rec_ann : 'a;
+    rec_lhs : string;
+    rec_rhs : 'a expr;
+  }
 
 type 'a datacon = {
     datacon_ann : 'a;
@@ -74,8 +86,8 @@ type 'a adt = {
   }
 
 type 'a item' =
-  | Let of ('a pattern * 'a expr) list
-  | Let_rec of (string * 'a expr) list
+  | Let of 'a let_binding list
+  | Let_rec of 'a rec_binding list
   | Type of 'a adt * 'a adt list
 
 type 'a item = {

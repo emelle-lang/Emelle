@@ -163,18 +163,16 @@ let rec default_matrix rows =
     ) ~init:(Some []) rows
 
 let map_ids_to_occs occurrences row =
-  let rec helper bindings occurrences list =
+  let rec go bindings occurrences list =
     match occurrences, list with
     | [], [] -> Ok bindings
-    | [], _::_ ->
-       Error (Sequence.return (Message.Unreachable "Too many patterns"))
-    | _::_, [] ->
-       Error (Sequence.return (Message.Unreachable "Too many occurrences"))
+    | [], _::_ -> Error (Message.Unreachable_error "Too many patterns")
+    | _::_, [] -> Error (Message.Unreachable_error "Too many occurrences")
     | occ::occs, pat::pats ->
        match pat.id with
-       | None -> helper bindings occs pats
-       | Some id -> helper (Map.set bindings ~key:id ~data:occ) occs pats
-  in helper row.bindings occurrences row.patterns
+       | None -> go bindings occs pats
+       | Some id -> go (Map.set bindings ~key:id ~data:occ) occs pats
+  in go row.bindings occurrences row.patterns
 
 (** Corresponds with swap_columns and swap_column_of_row (The occurrences vector
     is like another row) *)
@@ -202,15 +200,16 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
      | Found_adt(alg, i) ->
         (* Case 3 *)
         begin match swap_column i rows with
-        | None -> Error Sequence.empty
+        | None -> Error (Message.Unreachable_error "")
         | Some rows ->
            match default_matrix rows with
-           | None -> Message.unreachable "No default of empty matrix"
+           | None ->
+              Error (Message.Unreachable_error "No default of empty matrix")
            | Some default ->
               match swap_occurrences i occurrences with
               | None ->
-                 Message.unreachable
-                   ("Pattern idx out of bounds: " ^ (Int.to_string i))
+                 Error (Message.Unreachable_error
+                          ("Pattern idx out of bounds: " ^ (Int.to_string i)))
               | Some (first_occ, rest_occs) ->
                  let tag_reg = fresh_reg ctx in
                  Array.foldi
@@ -231,7 +230,7 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
                      let (new_regs, pushed_occs) =
                        push_occs rest_occs 0 product in
                      match specialize id product first_occ rows with
-                     | None -> Message.unreachable "dec tree 1"
+                     | None -> Error (Message.Unreachable_error "dec tree 1")
                      | Some matrix ->
                         match
                           decision_tree_of_matrix ctx pushed_occs matrix
@@ -242,7 +241,8 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
                              Map.add jump_tbl ~key:id ~data:(new_regs, tree)
                            with
                            | `Ok jump_tbl -> Ok jump_tbl
-                           | `Duplicate -> Message.unreachable "dec tree dup"
+                           | `Duplicate ->
+                              Error (Message.Unreachable_error "dec tree dup")
                    )
                  >>= fun jump_tbl ->
                  decision_tree_of_matrix ctx rest_occs default
@@ -251,13 +251,13 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
         end
      | Found_ref i ->
         match swap_occurrences i occurrences with
-        | None -> Error Sequence.empty
+        | None -> Error (Message.Unreachable_error "")
         | Some (first_occ, rest_occs) ->
            match swap_column i rows with
-           | None -> Error Sequence.empty
+           | None -> Error (Message.Unreachable_error "")
            | Some rows ->
               match specialize_ref first_occ rows with
-              | None -> Error Sequence.empty
+              | None -> Error (Message.Unreachable_error "")
               | Some matrix ->
                  let reg = fresh_reg ctx in
                  let occs = (Ir.Operand.Register reg)::rest_occs in

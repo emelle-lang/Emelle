@@ -32,7 +32,7 @@ let () =
                  set_console_text (Prettyprint.to_string pp)
               | Error errs ->
                  Caml.print_endline "ERROR!";
-                 Sequence.iter ~f:(Prettyprint.print_error pp) errs;
+                 Prettyprint.print_message Prettyprint.print_span pp errs;
                  set_console_text (Prettyprint.to_string pp)
               | exception (Parser.Error | Lexer.Error _) ->
                  Caml.print_endline "ERROR";

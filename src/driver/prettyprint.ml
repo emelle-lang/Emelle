@@ -76,8 +76,7 @@ let rec print_type pp parent_prec ty =
      Buffer.add_char pp.buffer 't';
      Buffer.add_string pp.buffer (Int.to_string id)
 
-let print_error pp e =
-  begin match e with
+let print_error pp = function
   | Message.Abstract_type id ->
      Buffer.add_string pp.buffer "Abstract type ";
      print_ident pp id
@@ -88,7 +87,7 @@ let print_error pp e =
      print_type pp (-1) t1;
      Buffer.add_string pp.buffer " and ";
      print_type pp (-1) t2
-  | Message.Unreachable str ->
+  | Message.Unreachable_error str ->
      Buffer.add_string pp.buffer "Unreachable ";
      Buffer.add_string pp.buffer str
   | Message.Unresolved_id id ->
@@ -101,8 +100,31 @@ let print_error pp e =
      Buffer.add_string pp.buffer "Unsafe let rec"
   | _ ->
      Buffer.add_string pp.buffer "other"
-  end;
-  Buffer.add_char pp.buffer '\n'
+
+let print_pos pp pos =
+  Buffer.add_string pp.buffer pos.Lexing.pos_fname;
+  Buffer.add_char pp.buffer ':';
+  Buffer.add_string pp.buffer (Int.to_string pos.Lexing.pos_lnum);
+  Buffer.add_char pp.buffer ':';
+  Buffer.add_string pp.buffer (Int.to_string pos.Lexing.pos_cnum)
+
+let print_span pp (start, fin) =
+  print_pos pp start;
+  Buffer.add_char pp.buffer '-';
+  print_pos pp fin;
+  Buffer.add_string pp.buffer ": "
+
+let rec print_message f pp e =
+  begin match e with
+  | Message.Diagnostic { Message.error; loc } ->
+     f pp loc;
+     print_error pp error
+  | Message.And(l, r) ->
+     print_message f pp l;
+     print_message f pp r
+  | Message.Unreachable str ->
+     Buffer.add_string pp.buffer str
+  end
 
 let print_lit pp = function
   | Literal.Char ch ->

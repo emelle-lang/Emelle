@@ -39,7 +39,7 @@ let rec free_var self id =
          Queue.enqueue self.free_vars (reg, Ir.Operand.Register var);
          Ok reg
       | None ->
-         Error (Sequence.return (Message.Unreachable "Lower free_var"))
+         Error (Message.Unreachable_error "Lower free_var")
     )
 
 let make_break self ann instr =
@@ -52,15 +52,15 @@ let make_break self ann instr =
         , { Anf.ann; instr = Anf.Break (Ir.Operand.Register reg) } ) }
 
 (** Combine statically known nested unary functions into multi-argument procs *)
-let rec proc_of_typedtree self params id body ~cont =
+let rec proc_of_typedtree self params ann id body ~cont =
   let reg = fresh_register self in
   match Hashtbl.add self.ctx ~key:id ~data:reg with
   | `Duplicate ->
-     Error (Sequence.return (Message.Unreachable "Lower uncurry"))
+     Message.error ann (Message.Unreachable_error "Lower uncurry")
   | `Ok ->
      match body.Typedtree.expr with
      | Typedtree.Lam(id, body) ->
-        proc_of_typedtree self (reg::params) id body ~cont
+        proc_of_typedtree self (reg::params) body.Typedtree.ann id body ~cont
      | _ ->
         instr_of_typedtree self body ~cont:(fun opcode ->
             cont (Anf.Fun { env = Queue.to_list self.free_vars
@@ -114,7 +114,7 @@ and flatten_app self count args f x ~cont =
 
 (** This function implements the compilation of a case expression, as used in
     [instr_of_lambdacode]. *)
-and compile_case self scruts matrix ~cont =
+and compile_case self ann scruts matrix ~cont =
   let open Result.Monad_infix in
   let rec loop operands = function
     | scrut::scruts ->
@@ -123,7 +123,8 @@ and compile_case self scruts matrix ~cont =
          )
     | [] ->
        let scruts = List.rev operands in
-       Pattern.decision_tree_of_matrix self.pat_ctx scruts matrix
+       Message.at ann
+         (Pattern.decision_tree_of_matrix self.pat_ctx scruts matrix)
        >>= fun tree -> cont tree
   in loop [] scruts
 
@@ -136,8 +137,7 @@ and compile_branch self bindings =
       let param = fresh_register self in
       match Hashtbl.add self.ctx ~key:id ~data:param with
       | `Duplicate ->
-         Error (Sequence.return
-                  (Message.Unreachable "Lower compile_branch"))
+         Error (Message.Unreachable_error "Lower compile_branch")
       | `Ok -> Ok (param::params)
     ) ~init:(Ok []) bindings
 
@@ -156,10 +156,10 @@ and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
            )
        )
   | Typedtree.Case(scruts, matrix, branches) ->
-     compile_case self scruts matrix ~cont:(fun tree ->
+     compile_case self ann scruts matrix ~cont:(fun tree ->
          List.fold_right ~f:(fun (bindings, body) acc ->
              acc >>= fun list ->
-             compile_branch self bindings >>= fun params ->
+             Message.at ann (compile_branch self bindings) >>= fun params ->
              instr_of_typedtree self body ~cont:(fun opcode ->
                  Ok (make_break self ann opcode)
                )
@@ -175,18 +175,20 @@ and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
        )
   | Typedtree.Lam(reg, body) ->
      let self = create (Some self) in
-     proc_of_typedtree self [] reg body ~cont
+     proc_of_typedtree self [] ann reg body ~cont
   | Typedtree.Let(lhs, rhs, body) ->
      instr_of_typedtree self rhs ~cont:(fun rhs ->
          let var = fresh_register self in
          match Hashtbl.add self.ctx ~key:lhs ~data:var with
-         | `Duplicate -> Message.unreachable "Lower instr_of_lambdacode"
+         | `Duplicate ->
+            Message.error ann
+              (Message.Unreachable_error "Lower instr_of_lambdacode")
          | `Ok ->
             instr_of_typedtree self body ~cont >>| fun body ->
             { Anf.ann; instr = Anf.Let(var, rhs, body) }
        )
   | Typedtree.Let_rec(bindings, body) ->
-     compile_letrec self bindings ~cont:(fun bindings ->
+     compile_letrec self ann bindings ~cont:(fun bindings ->
          instr_of_typedtree self body ~cont >>| fun body ->
          { Anf.ann; instr = Anf.Let_rec(bindings, body) }
        )
@@ -208,14 +210,14 @@ and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
 
 (** This function implements the compilation of a let-rec expression, as used in
     [instr_of_typedtree]. *)
-and compile_letrec self bindings ~cont =
+and compile_letrec self ann bindings ~cont =
   let open Result.Monad_infix in
   List.fold ~f:(fun acc (lhs, rhs) ->
       acc >>= fun list ->
       let var = fresh_register self in
       match Hashtbl.add self.ctx ~key:lhs ~data:var with
       | `Duplicate ->
-         Error (Sequence.return (Message.Unreachable "Bytecode comp letrec"))
+         Message.error ann (Message.Unreachable_error "Bytecode comp letrec")
       | `Ok -> Ok ((var, rhs)::list)
     ) ~init:(Ok []) bindings >>= fun list ->
   let rec f bindings = function
@@ -253,7 +255,8 @@ and operand_of_typedtree self typedtree ~cont =
   | Typedtree.Extern_var id -> cont (Ir.Operand.Extern_var id)
   | Typedtree.Lit lit -> cont (Ir.Operand.Lit lit)
   | Typedtree.Local_var id ->
-     free_var self id >>= fun reg -> cont (Ir.Operand.Register reg)
+     Message.at typedtree.Typedtree.ann (free_var self id)
+     >>= fun reg -> cont (Ir.Operand.Register reg)
   | _ ->
      instr_of_typedtree self typedtree ~cont:(fun rhs ->
          let var = fresh_register self in
@@ -268,14 +271,15 @@ let compile
   let lowerer = create None in
   let rec loop = function
     | Typedtree.Top_let(scruts, bindings, matrix)::rest ->
-       compile_case lowerer scruts matrix
+       compile_case lowerer top_ann scruts matrix
          ~cont:(fun tree ->
-           compile_branch lowerer bindings >>= fun params ->
+           Message.at top_ann (compile_branch lowerer bindings)
+           >>= fun params ->
            loop rest >>| fun body ->
            make_break lowerer top_ann (Anf.Case(tree, [params, body]))
          )
     | Typedtree.Top_let_rec(bindings)::rest ->
-       compile_letrec lowerer bindings ~cont:(fun bindings ->
+       compile_letrec lowerer top_ann bindings ~cont:(fun bindings ->
            loop rest >>| fun body ->
            { Anf.ann = top_ann
            ; instr = Anf.Let_rec(bindings, body) }
@@ -285,8 +289,8 @@ let compile
            acc >>= fun (i, list) ->
            match Env.find env name with
            | None ->
-              Error (Sequence.return
-                       (Message.Unresolved_path (Ast.Internal name)))
+              Message.error top_ann
+                (Message.Unresolved_path (Ast.Internal name))
            | Some id ->
               match Hashtbl.find typing_ctx id with
               | None -> Message.unreachable "Pipeline export 1"
@@ -297,7 +301,7 @@ let compile
                     match Package.add_val package name ty i with
                     | Some () -> Ok (i + 1, (Ir.Operand.Register reg)::list)
                     | None ->
-                       Error (Sequence.return (Message.Reexported_name name))
+                       Message.error top_ann (Message.Reexported_name name)
          ) ~init:(Ok (0, [])) exports
        >>| fun (_, operands) ->
        make_break lowerer top_ann (Anf.Box (0, List.rev operands)) in

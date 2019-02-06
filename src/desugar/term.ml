@@ -8,14 +8,20 @@ type ('ann, 'fix) term =
   | Extern_var of Path.t * Type.t
   | Lam of Ident.t * 'fix
   | Let of Ident.t * 'fix * 'fix
-  | Let_rec of 'fix bind_group * 'fix
+  | Let_rec of ('ann, 'fix) bind_group * 'fix
   | Lit of Literal.t
   | Prim of string * 'ann Ast.polytype
   | Ref
   | Seq of 'fix * 'fix
   | Var of Ident.t
 
-and 'a bind_group = (Ident.t * 'a) list
+and ('a, 'fix) rec_binding = {
+    rec_ann : 'a;
+    rec_lhs : Ident.t;
+    rec_rhs : 'fix;
+  }
+
+and ('a, 'fix) bind_group = ('a, 'fix) rec_binding list
 
 and id_set = (Ident.t, Ident.comparator_witness) Set.t
 
@@ -29,7 +35,7 @@ type 'ann t = {
 type 'a item =
   | Top_let of
       'a t list * (Ident.t, Ident.comparator_witness) Set.t * 'a Pattern.t list
-  | Top_let_rec of 'a t bind_group
+  | Top_let_rec of ('a, 'a t) bind_group
 
 type 'a file = {
     top_ann : 'a;

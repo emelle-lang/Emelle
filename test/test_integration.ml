@@ -324,7 +324,7 @@ let () =
         Parser.file Lexer.expr (Lexing.from_string test)
         |> Pipeline.compile (Hashtbl.create (module String)) "main"
       with
-      | Ok(_, file) ->
+      | Ok (_, file) ->
          begin
            let ctx = Eval.create () in
            try ignore (Eval.eval ctx file) with
@@ -335,7 +335,7 @@ let () =
          end
       | Error e ->
          let pp = Prettyprint.create () in
-         Sequence.iter ~f:(Prettyprint.print_error pp) e;
+         Prettyprint.print_message Prettyprint.print_span pp e;
          Stdio.print_endline (Prettyprint.to_string pp);
          raise (Module_fail test)
       | exception Parser.Error ->

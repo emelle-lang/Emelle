@@ -50,7 +50,7 @@ let kind_of_ident self name =
 let add_typedef self name typedef =
   match Hashtbl.add self.typedefs ~key:name ~data:(ref typedef) with
   | `Ok -> Ok ()
-  | `Duplicate -> Error (Sequence.return (Message.Redefined_name name))
+  | `Duplicate -> Error (Message.Redefined_name name)
 
 let add_datacons self adt =
   let open Result.Monad_infix in
@@ -59,7 +59,7 @@ let add_datacons self adt =
       acc >>= fun () ->
       match Hashtbl.add self.datacons ~key:constr ~data:(adt, idx) with
       | `Ok -> Ok ()
-      | `Duplicate -> Error (Sequence.return (Message.Redefined_constr constr))
+      | `Duplicate -> Error (Message.Redefined_constr constr)
     ) ~init:(Ok ()) adt.Type.datacon_names
 
 let add_val self name ty reg =
