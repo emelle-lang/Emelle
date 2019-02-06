@@ -60,16 +60,28 @@ and 'a expr' =
 
 and 'a lambda_case = 'a pattern * 'a pattern list * 'a expr
 
-type 'a adt = {
-    adt_name : string;
-    adt_params : string list;
-    adt_constrs : (string * 'a monotype list) list
+type 'a datacon = {
+    datacon_ann : 'a;
+    datacon_name : string;
+    datacon_product : 'a monotype list;
   }
 
-type 'a item =
+type 'a adt = {
+    adt_ann : 'a;
+    adt_name : string;
+    adt_params : string list;
+    adt_datacons : 'a datacon list
+  }
+
+type 'a item' =
   | Let of ('a pattern * 'a expr) list
   | Let_rec of (string * 'a expr) list
   | Type of 'a adt * 'a adt list
+
+type 'a item = {
+    item_ann : 'a;
+    item_node : 'a item';
+  }
 
 type 'a file = {
     file_ann : 'a;

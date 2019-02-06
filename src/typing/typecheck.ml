@@ -207,7 +207,10 @@ let type_adt_of_ast_adt checker adt =
   let kinds = fresh_kinds_of_typeparams checker adt.Ast.adt_params in
   let kind = Kind.curry kinds Kind.Mono in
   let constr_map = Hashtbl.create (module String) in
-  List.fold_right ~f:(fun (name, product) acc ->
+  List.fold_right
+    adt.Ast.adt_datacons
+    ~init:(Ok ([], List.length adt.Ast.adt_datacons - 1))
+    ~f:(fun { Ast.datacon_name = name; datacon_product = product; _ } acc ->
       acc >>= fun (constr_list, idx) ->
       match Hashtbl.add constr_map ~key:name ~data:idx with
       | `Duplicate -> Error (Sequence.return (Message.Redefined_constr name))
@@ -231,13 +234,13 @@ let type_adt_of_ast_adt checker adt =
          in
          let _ = set_levels_of_tvars product in
          ((name, product, out_ty)::constr_list, idx - 1)
-    ) ~init:(Ok ([], List.length adt.Ast.adt_constrs - 1)) adt.Ast.adt_constrs
-  >>| fun (constrs, _) ->
-  let constrs = Array.of_list constrs in
+    )
+  >>| fun (datacons, _) ->
+  let datacons = Array.of_list datacons in
   { Type.name = adt.Ast.adt_name
   ; adt_kind = kind
-  ; constr_names = constr_map
-  ; constrs }
+  ; datacon_names = constr_map
+  ; datacons }
 
 let in_new_let_level f self =
   f { self with let_level = self.let_level + 1 }
@@ -331,7 +334,7 @@ let rec infer_pattern checker map ty pat =
   match pat.Pattern.node with
   | Pattern.Con(adt, idx, pats) ->
      let tvar_map = Hashtbl.create (module Type.Var) in
-     let (_, products, adt_ty) = adt.Type.constrs.(idx) in
+     let (_, products, adt_ty) = adt.Type.datacons.(idx) in
      let nom_ty = inst checker tvar_map adt_ty in
      let products = List.map ~f:(inst checker tvar_map) products in
      unify_types checker ty nom_ty >>= fun () ->
@@ -425,7 +428,7 @@ let rec infer_term checker Term.{ term; ann } =
      ; expr = Typedtree.Case(scruts, matrix, branches) }
 
   | Term.Constr(adt, idx) ->
-     let _, product, out_ty = adt.Type.constrs.(idx) in
+     let _, product, out_ty = adt.Type.datacons.(idx) in
      let ty = Type.curry product out_ty in
      Ok { Typedtree.ann
         ; ty = inst checker (Hashtbl.create (module Type.Var)) ty

@@ -213,7 +213,10 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
                    ("Pattern idx out of bounds: " ^ (Int.to_string i))
               | Some (first_occ, rest_occs) ->
                  let tag_reg = fresh_reg ctx in
-                 Array.foldi ~f:(fun id acc (_, product, _) ->
+                 Array.foldi
+                   alg.Type.datacons
+                   ~init:(Ok (Map.empty (module Int)))
+                   ~f:(fun id acc (_, product, _) ->
                      acc >>= fun jump_tbl ->
                      (* Just like how the matched value is popped off the stack
                         and its children pushed on the stack, pop off the
@@ -240,7 +243,7 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
                            with
                            | `Ok jump_tbl -> Ok jump_tbl
                            | `Duplicate -> Message.unreachable "dec tree dup"
-                   ) alg.Type.constrs ~init:(Ok (Map.empty (module Int)))
+                   )
                  >>= fun jump_tbl ->
                  decision_tree_of_matrix ctx rest_occs default
                  >>| fun default_tree ->

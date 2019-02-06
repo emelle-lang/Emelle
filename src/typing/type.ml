@@ -54,8 +54,8 @@ end
 type adt = {
     name : string;
     adt_kind : Kind.t;
-    constr_names : (string, int) Hashtbl.t;
-    constrs : (string * t list * t) array
+    datacon_names : (string, int) Hashtbl.t;
+    datacons : (string * t list * t) array
   }
 
 type decl =
@@ -96,7 +96,7 @@ let rec curry input_tys output_ty =
 
 (** Given an ADT and one of its constructors, return the constructor's type *)
 let type_of_constr adt constr =
-  let _, product, output_ty = adt.constrs.(constr) in
+  let _, product, output_ty = adt.datacons.(constr) in
   curry product output_ty
 
 let kind_of_adt adt = adt.adt_kind
@@ -115,8 +115,7 @@ let kind_of_prim = function
     levels of unassigned typevars when necessary. *)
 let rec occurs tvar ty =
   match ty with
-  | App(tcon, targ) ->
-     occurs tvar tcon || occurs tvar targ
+  | App(tcon, targ) -> occurs tvar tcon || occurs tvar targ
   | Nominal _ -> false
   | Prim _ -> false
   | Var { id; _ } when id = tvar.id -> true
@@ -136,8 +135,7 @@ let rec occurs tvar ty =
      | _ -> ()
      end;
      begin match tvar2.purity with
-     | Pure ->
-        tvar2.purity <- tvar.purity
+     | Pure -> tvar2.purity <- tvar.purity
      | _ -> ()
      end;
      false

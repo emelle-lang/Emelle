@@ -13,7 +13,7 @@ type ty_state =
 type t =
   { name : string
   ; typedefs : (string, ty_state ref) Hashtbl.t
-  ; constrs : (string, Type.adt * int) Hashtbl.t
+  ; datacons : (string, Type.adt * int) Hashtbl.t
   ; vals : (string, Type.t * int) Hashtbl.t }
 
 let create name =
@@ -26,14 +26,14 @@ let create name =
         ; "Int", ref (Prim Type.Int)
         ; "String", ref (Prim Type.String)
         ; "Unit", ref (Prim Type.Unit) ]
-  ; constrs = Hashtbl.create (module String)
+  ; datacons = Hashtbl.create (module String)
   ; vals = Hashtbl.create (module String) }
 
 let find f self name = Hashtbl.find (f self) name
 
 let find_typedef = find (fun package -> package.typedefs)
 
-let find_adt = find (fun package -> package.constrs)
+let find_adt = find (fun package -> package.datacons)
 
 let find_val = find (fun package -> package.vals)
 
@@ -52,15 +52,15 @@ let add_typedef self name typedef =
   | `Ok -> Ok ()
   | `Duplicate -> Error (Sequence.return (Message.Redefined_name name))
 
-let add_constrs self adt =
+let add_datacons self adt =
   let open Result.Monad_infix in
   Hashtbl.fold
     ~f:(fun ~key:constr ~data:idx acc ->
       acc >>= fun () ->
-      match Hashtbl.add self.constrs ~key:constr ~data:(adt, idx) with
+      match Hashtbl.add self.datacons ~key:constr ~data:(adt, idx) with
       | `Ok -> Ok ()
       | `Duplicate -> Error (Sequence.return (Message.Redefined_constr constr))
-    ) ~init:(Ok ()) adt.Type.constr_names
+    ) ~init:(Ok ()) adt.Type.datacon_names
 
 let add_val self name ty reg =
   match Hashtbl.add self.vals ~key:name ~data:(ty, reg) with

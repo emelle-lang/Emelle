@@ -76,20 +76,29 @@ let package :=
         ; file_exports = exports } }
 
 let item :=
-  | LET; bindings = separated_list(AND, binding); { Ast.Let bindings }
+  | LET; bindings = separated_list(AND, binding);
+      { { Ast.item_ann = ($symbolstartpos, $endpos)
+        ; item_node = Ast.Let bindings } }
   | LET; REC; bindings = separated_nonempty_list(AND, rec_binding);
-      { Ast.Let_rec bindings }
-  | TYPE; ~ = adt; adts = list(AND; adt); { Ast.Type(adt, adts) }
+      { { Ast.item_ann = ($symbolstartpos, $endpos)
+        ; item_node = Ast.Let_rec bindings } }
+  | TYPE; ~ = adt; adts = list(AND; adt);
+      { { Ast.item_ann = ($symbolstartpos, $endpos)
+        ; item_node = Ast.Type(adt, adts) } }
 
 let adt :=
-  | name = UIDENT;
-    params = list(LIDENT);
-    EQUALS; option(BAR);
+  | name = UIDENT; params = list(LIDENT); EQUALS; option(BAR);
     constrs = separated_list(BAR, constr);
-      { Ast.{ adt_name = name; adt_params = params; adt_constrs = constrs } }
+      { { Ast.adt_ann = ($symbolstartpos, $endpos)
+        ; adt_name = name
+        ; adt_params = params
+        ; adt_datacons = constrs } }
 
 let constr :=
-  | name = UIDENT; tys = separated_list(STAR, monotype); { (name, tys) }
+  | name = UIDENT; tys = separated_list(STAR, monotype);
+      { { Ast.datacon_ann = ($symbolstartpos, $endpos)
+        ; datacon_name = name
+        ; datacon_product = tys } }
 
 let tvar_decl :=
   | id = LIDENT; opt = option(BANG; i = INT_LIT; { i });

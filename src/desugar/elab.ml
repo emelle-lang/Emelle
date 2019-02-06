@@ -262,7 +262,7 @@ let elab typechecker env package packages ast_file =
   let elab = create package packages in
   List.fold ast_file.Ast.file_items ~init:(Ok (env, [])) ~f:(fun acc next ->
       acc >>= fun (env, list) ->
-      match next with
+      match next.Ast.item_node with
       | Ast.Let bindings ->
          elab_let_bindings elab env bindings
          >>= fun (map, scruts, ids, pats) ->
@@ -299,11 +299,11 @@ let elab typechecker env package packages ast_file =
                 | Package.Todo kind ->
                    Typecheck.unify_kinds kind (Type.kind_of_adt adt)
                    >>= fun () ->
-                   Package.add_constrs package adt >>= fun () ->
+                   Package.add_datacons package adt >>= fun () ->
                    ptr := Package.Compiled (Type.Manifest adt);
                    Ok ()
                 | Package.Prim _ ->
-                   Package.add_constrs package adt >>= fun () ->
+                   Package.add_datacons package adt >>= fun () ->
                    ptr := Package.Compiled (Type.Manifest adt);
                    Ok ()
            ) ~init:(Ok ()) (adt::adts) >>| fun () ->
