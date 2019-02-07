@@ -567,7 +567,7 @@ let typecheck typechecker term_file =
   let open Result.Monad_infix in
   List.fold ~f:(fun acc next ->
       acc >>= fun list ->
-      match next with
+      match next.Term.item_node with
       | Term.Top_let(scruts, ids, pats) ->
          List.fold_right ~f:(fun scrut acc ->
              acc >>= fun list ->
@@ -580,11 +580,13 @@ let typecheck typechecker term_file =
          let matrix =
            [ { Pattern.patterns = pats
              ; bindings = Map.empty (module Ident)
-             ; action = 0 } ]
-         in (Typedtree.Top_let(scruts, ids, matrix))::list
+             ; action = 0 } ] in
+         { Typedtree.item_ann = next.Term.item_ann
+         ; item_node = Typedtree.Top_let(scruts, ids, matrix) }::list
       | Term.Top_let_rec bindings ->
          infer_rec_bindings typechecker bindings >>| fun bindings ->
-         (Typedtree.Top_let_rec bindings)::list
+         { Typedtree.item_ann = next.Term.item_ann
+         ; item_node = Typedtree.Top_let_rec bindings }::list
     ) ~init:(Ok []) term_file.Term.items
   >>| fun items ->
   { Typedtree.top_ann = term_file.Term.top_ann

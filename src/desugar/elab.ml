@@ -277,11 +277,15 @@ let elab typechecker env package packages ast_file =
              | None ->
                 Message.error next.Ast.item_ann (Message.Redefined_name key)
            ) >>| fun env ->
-         (env, (Term.Top_let(scruts, ids, pats))::list)
+         ( env
+         , { Term.item_ann = next.Ast.item_ann
+           ; item_node = Term.Top_let(scruts, ids, pats) }::list )
       | Ast.Let_rec bindings ->
          elab_rec_bindings elab env bindings
          >>| fun (env, bindings) ->
-         (env, (Term.Top_let_rec bindings)::list)
+         ( env
+         , { Term.item_ann = next.Ast.item_ann
+           ; item_node = Term.Top_let_rec bindings }::list )
       | Ast.Type(adt, adts) ->
          List.fold ~f:(fun acc adt ->
              acc >>= fun () ->

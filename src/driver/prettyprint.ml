@@ -106,7 +106,7 @@ let print_pos pp pos =
   Buffer.add_char pp.buffer ':';
   Buffer.add_string pp.buffer (Int.to_string pos.Lexing.pos_lnum);
   Buffer.add_char pp.buffer ':';
-  Buffer.add_string pp.buffer (Int.to_string pos.Lexing.pos_cnum)
+  Buffer.add_string pp.buffer (Int.to_string pos.Lexing.pos_bol)
 
 let print_span pp (start, fin) =
   print_pos pp start;

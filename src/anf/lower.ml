@@ -270,18 +270,20 @@ let compile
   let open Result.Monad_infix in
   let lowerer = create None in
   let rec loop = function
-    | Typedtree.Top_let(scruts, bindings, matrix)::rest ->
+    | { Typedtree.item_ann = ann
+      ; item_node = Typedtree.Top_let(scruts, bindings, matrix)}::rest ->
        compile_case lowerer top_ann scruts matrix
          ~cont:(fun tree ->
            Message.at top_ann (compile_branch lowerer bindings)
            >>= fun params ->
            loop rest >>| fun body ->
-           make_break lowerer top_ann (Anf.Case(tree, [params, body]))
+           make_break lowerer ann (Anf.Case(tree, [params, body]))
          )
-    | Typedtree.Top_let_rec(bindings)::rest ->
+    | { Typedtree.item_ann = ann
+      ; item_node = Typedtree.Top_let_rec(bindings) }::rest ->
        compile_letrec lowerer top_ann bindings ~cont:(fun bindings ->
            loop rest >>| fun body ->
-           { Anf.ann = top_ann
+           { Anf.ann = ann
            ; instr = Anf.Let_rec(bindings, body) }
          )
     | [] ->

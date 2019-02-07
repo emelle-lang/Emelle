@@ -23,10 +23,15 @@ type 'a t = {
     expr : ('a, 'a t) expr
   }
 
-type 'a item =
+type 'a item' =
   | Top_let of
       'a t list * (Ident.t, Ident.comparator_witness) Set.t * 'a Pattern.matrix
   | Top_let_rec of (Ident.t * 'a t) list
+
+type 'a item = {
+    item_ann : 'a;
+    item_node : 'a item'
+  }
 
 type 'a file = {
     top_ann : 'a;

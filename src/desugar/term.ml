@@ -32,10 +32,15 @@ type 'ann t = {
     ann : 'ann;
   }
 
-type 'a item =
+type 'a item' =
   | Top_let of
       'a t list * (Ident.t, Ident.comparator_witness) Set.t * 'a Pattern.t list
   | Top_let_rec of ('a, 'a t) bind_group
+
+type 'a item = {
+    item_ann : 'a;
+    item_node : 'a item';
+  }
 
 type 'a file = {
     top_ann : 'a;
