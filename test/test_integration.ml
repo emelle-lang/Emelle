@@ -326,7 +326,7 @@ let () =
       with
       | Ok (_, file) ->
          begin
-           let ctx = Eval.create () in
+           let ctx = Eval.create Io.stdio in
            try ignore (Eval.eval ctx file) with
            | _ ->
               let pp = Prettyprint.create () in

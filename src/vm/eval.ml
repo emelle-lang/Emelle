@@ -47,20 +47,28 @@ type t = {
     foreign_values : (string, value) Hashtbl.t
   }
 
-let create () =
+let create io =
   { foreign_values =
       Hashtbl.of_alist_exn
         (module String)
-        [ "puts"
+        [ "putc"
         , Foreign
             { arity = 1
             ; params = [0]
-            ; f =
-                function
-                | [|String s|] ->
-                   Caml.print_endline s;
-                   Unit
-                | _ -> failwith "Type error" } ] }
+            ; f = function
+                  | [|Char c|] ->
+                     io.Io.putc c;
+                     Unit
+                  | _ -> failwith "Type error" }
+        ; "puts"
+        , Foreign
+            { arity = 1
+            ; params = [0]
+            ; f = function
+                  | [|String s|] ->
+                     io.Io.puts s;
+                     Unit
+                  | _ -> failwith "Type error" } ] }
 
 let eval_operand frame = function
   | Asm.Extern_var _ -> failwith "unimplemented"
