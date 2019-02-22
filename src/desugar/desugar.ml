@@ -175,21 +175,15 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
           into
 
               case e1, e2, ... eN with
-              | p1, p2, ... pN -> body
-
-          What should the semantics be regarding diverging RHS expressions and
-          refutable patterns? One would expect the let bindings' RHS to
-          evaluate and match with its LHS pattern from top to bottom, but with
-          the case desugar, all of the RHS expressions evaluate before any of
-          them match with the LHS pattern. Is this desugar sensible? *)
-       elab_let_bindings st env bindings
+              | p1, p2, ... pN -> body *)
+       desugar_let_bindings st env bindings
        >>= fun (map, scruts, ids, pats) ->
        Env.in_scope_with (fun env -> term_of_expr st env body) map env
        >>| fun body -> Term.Case(scruts, [pats, ids, body])
 
     | Ast.Let_rec(bindings, body) ->
        Env.in_scope (fun env ->
-           elab_rec_bindings st env bindings >>= fun (env, bindings) ->
+           desugar_rec_bindings st env bindings >>= fun (env, bindings) ->
            term_of_expr st env body >>| fun body ->
            Term.Let_rec(bindings, body)
          ) env
@@ -220,7 +214,7 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
 
   in term >>| fun term -> { Term.ann = ann; term = term }
 
-and elab_rec_bindings self env bindings =
+and desugar_rec_bindings self env bindings =
   let open Result.Monad_infix in
   List.fold_right
     ~f:(fun { Ast.rec_lhs = str; rec_rhs = expr; rec_ann = ann } acc ->
@@ -239,7 +233,7 @@ and elab_rec_bindings self env bindings =
     ) ~init:(Ok []) bindings
   >>| fun bindings -> (env, bindings)
 
-and elab_let_bindings self env bindings =
+and desugar_let_bindings self env bindings =
   let open Result.Monad_infix in
   let helper map { Ast.let_lhs = pat; let_rhs = expr; let_ann = _ann } =
     pattern_of_ast_pattern self map None pat
@@ -261,14 +255,14 @@ and elab_let_bindings self env bindings =
       ) ~init:(Set.empty (module Ident)) map
   in (map, scruts, ids, pats)
 
-let elab typechecker env package packages ast_file =
+let desugar typechecker env package packages ast_file =
   let open Result.Monad_infix in
-  let elab = create package packages in
+  let t = create package packages in
   List.fold ast_file.Ast.file_items ~init:(Ok (env, [])) ~f:(fun acc next ->
       acc >>= fun (env, list) ->
       match next.Ast.item_node with
       | Ast.Let bindings ->
-         elab_let_bindings elab env bindings
+         desugar_let_bindings t env bindings
          >>= fun (map, scruts, ids, pats) ->
          Map.fold map ~init:(Ok env) ~f:(fun ~key:key ~data:data acc ->
              acc >>= fun env ->
@@ -281,7 +275,7 @@ let elab typechecker env package packages ast_file =
          , { Term.item_ann = next.Ast.item_ann
            ; item_node = Term.Top_let(scruts, ids, pats) }::list )
       | Ast.Let_rec bindings ->
-         elab_rec_bindings elab env bindings
+         desugar_rec_bindings t env bindings
          >>| fun (env, bindings) ->
          ( env
          , { Term.item_ann = next.Ast.item_ann

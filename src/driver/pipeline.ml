@@ -13,7 +13,7 @@ let create name packages =
 let compile_frontend self env ast_file =
   let open Result.Monad_infix in
   let typechecker = Typecheck.create self.package self.packages in
-  Elab.elab typechecker env self.package self.packages ast_file
+  Desugar.desugar typechecker env self.package self.packages ast_file
   >>= fun term_file ->
   Typecheck.typecheck typechecker term_file
   >>= fun typed_file ->
