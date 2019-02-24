@@ -123,7 +123,7 @@ let handle_proc proc =
   handle_block ctx proc proc.Ssa2.entry >>| fun () ->
   { map = ctx.coloring; frame_size = !(ctx.frame_size) }
 
-let handle_package package =
+let handle_file package =
   let open Result.Monad_infix in
   Map.fold package.Ssa2.procs ~init:(Ok (Map.empty (module Int)))
     ~f:(fun ~key ~data acc ->

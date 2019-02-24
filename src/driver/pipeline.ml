@@ -23,11 +23,11 @@ let compile packages name ast_package =
   let open Result.Monad_infix in
   let st = create name packages in
   compile_frontend st (Env.empty (module String)) ast_package
-  >>= Ssa_of_anf.compile_package
+  >>= Ssa_of_anf.compile_file
   >>= fun package ->
-  Liveness.handle_package package
+  Liveness.handle_file package
   >>= fun package' ->
-  Color.handle_package package'
+  Color.handle_file package'
   >>= fun colorings ->
   To_asm.compile colorings package'
   >>| fun package' -> (package, package')

@@ -1,5 +1,3 @@
-(** An immutable map with scoped name shadowing and O(log n) lookup *)
-
 open Base
 
 type ('k, +'v, 'cmp) t =
@@ -21,10 +19,10 @@ let extend parent map =
 
 let in_scope_with f frame env =
   let combine ~key:_ x _ = x in
-  let env' =
+  let env =
     { curr = frame
     ; parents = Map.merge_skewed env.curr env.parents ~combine:combine }
-  in f env'
+  in f env
 
 let in_scope f env = in_scope_with f (Map.empty (Map.comparator_s env.curr)) env
 

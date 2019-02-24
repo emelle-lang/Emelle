@@ -105,7 +105,7 @@ let handle_proc proc =
   ; blocks = blocks
   ; before_return = proc.Ssa.before_return }
 
-let handle_package { Ssa.procs; main } =
+let handle_file { Ssa.procs; main } =
   let open Result.Monad_infix in
   Map.fold procs ~init:(Ok (Map.empty (module Int)))
     ~f:(fun ~key:id ~data:proc acc ->

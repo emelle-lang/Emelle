@@ -5,7 +5,6 @@ type t =
   ; packages : (string, Package.t) Hashtbl.t
   ; package : Package.t }
 
-(** Create a fresh desugarer state *)
 let create package packages =
   { vargen = Ident.create_gen ()
   ; package
@@ -78,8 +77,6 @@ let rec pattern_of_ast_pattern st map id_opt ast_pat =
   | Ast.Wild ->
      Ok ({ Pattern.ann = ast_pat.Ast.pat_ann; node = Wild; id = id_opt }, map)
 
-(** [term_of_expr desugarer env expr] converts [expr] from an [Ast.expr] to a
-    [Term.t]. *)
 let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
   let open Result.Monad_infix in
   let term =

@@ -109,15 +109,6 @@ let rec unify_types checker lhs rhs =
          var.ty <- Some ty
     | _ -> Error (Message.Type_unification_fail(lhs, rhs))
 
-let unify_many checker ty =
-  List.fold ~f:(fun acc next ->
-      let result = unify_types checker ty next in
-      match acc, result with
-      | Ok (), Ok () -> Ok ()
-      | Ok (), Error e | Error e, Ok () -> Error e
-      | Error e1, Error e2 -> Error (Message.And_error(e1, e2))
-    ) ~init:(Ok ())
-
 (** Convert an Ast.monotype into an Type.t *)
 let rec normalize checker tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
   let open Result.Monad_infix in

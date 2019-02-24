@@ -253,7 +253,7 @@ and compile_proc ctx proc =
   ; entry = entry_label
   ; before_return }
 
-let compile_package anf =
+let compile_file anf =
   let open Result.Let_syntax in
   let label_gen = Ir.Label.create_gen () in
   let entry_label = Ir.Label.fresh label_gen in
