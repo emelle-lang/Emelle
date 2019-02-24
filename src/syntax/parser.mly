@@ -4,6 +4,7 @@
 %token AND
 %token CASE
 %token ELSE
+%token EXPORT
 %token FORALL
 %token FOREIGN
 %token FUN
@@ -12,7 +13,6 @@
 %token LET
 %token REC
 %token REF
-%token SELF
 %token THEN
 %token TYPE
 %token WITH
@@ -66,14 +66,17 @@ let qual_lid :=
   | x = UIDENT; DOT; y = LIDENT; { Ast.External(x, y) }
   | x = LIDENT; { Ast.Internal x }
 
+let exports :=
+  | EXPORT; LPARENS; l = separated_list(COMMA, LIDENT); RPARENS; { l }
+
 let package :=
-  | LPARENS;
-      exports = separated_list(COMMA, LIDENT);
-    RPARENS;
-    items = list(item);
+  | exports = option(exports); items = list(item);
       { { Ast.file_ann = ($symbolstartpos, $endpos)
         ; file_items = items
-        ; file_exports = exports } }
+        ; file_exports =
+            match exports with
+            | Some exports -> exports
+            | None -> [] } }
 
 let item :=
   | LET; bindings = separated_list(AND, binding);

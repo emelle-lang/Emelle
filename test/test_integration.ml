@@ -93,30 +93,28 @@ let _ = List.map ~f:test tests
 exception Module_fail of string
 
 let tests =
-  [ "(id) let id = fun x -> x"
-  ; "(k) let k = fun x _ -> x"
-  ; "(id, k) let id = fun x -> x let k = fun x _ -> x"
-  ; "() let _ = let x = 1 in let y = x in let z = x in z"
-  ; "() type Option a = None | Some a"
-  ; "(id2, id) let id = fun x -> x let id2 = id"
-  ; "() type Foo = Foo type Bar = Bar Foo"
-  ; "() type Bar = Bar Foo and Foo = Foo"
-  ; "() type List a = Nil | Cons a (List a)"
-  ; "(id, id2) let id = fun x -> x let id2 = id id"
-  ; "() let unit = ()"
-  ; "() type Option a = None | Some a let return = Some"
-  ; "() type Option a = None | Some a let return = fun a -> Some a"
-  ; "() type Either e a = Left e | Right a let return = Right"
-  ; {|()
-
-      type Either e a = Left e | Right a
+  [ "export (id) let id = fun x -> x"
+  ; "export (k) let k = fun x _ -> x"
+  ; "export (id, k) let id = fun x -> x let k = fun x _ -> x"
+  ; "export () let _ = let x = 1 in let y = x in let z = x in z"
+  ; "type Option a = None | Some a"
+  ; "export (id2, id) let id = fun x -> x let id2 = id"
+  ; "type Foo = Foo type Bar = Bar Foo"
+  ; "type Bar = Bar Foo and Foo = Foo"
+  ; "type List a = Nil | Cons a (List a)"
+  ; "export (id, id2) let id = fun x -> x let id2 = id id"
+  ; "let unit = ()"
+  ; "type Option a = None | Some a let return = Some"
+  ; "type Option a = None | Some a let return = fun a -> Some a"
+  ; "type Either e a = Left e | Right a let return = Right"
+  ; {|type Either e a = Left e | Right a
 
       let rec f = fun
         | (Left e) -> e
         | (Right a) -> a
 
      |}
-  ; {|(map)
+  ; {|export (map)
       type Option a = None | Some a
       let one =
         case Some 1 with
@@ -138,14 +136,14 @@ let tests =
         | (Some (Some b)) -> Some b
         | _ -> None
     |}
-  ; {|(x)
+  ; {|export (x)
       type Either e a = Left e | Right a
       let x =
         case Left 1 with
         | Left _ -> 0
         | Right x -> x
      |}
-  ; "() type Product a b = Pair a * b let mkPair = fun x y -> Pair x y"
+  ; "type Product a b = Pair a * b let mkPair = fun x y -> Pair x y"
   (*; {|(id, const, undefined)
 
       let id = foreign "id" forall t. t -> t
@@ -158,8 +156,7 @@ let tests =
 
       let id3 = const undefined id
      |}*)
-  ; {|()
-      type Option a = None | Some a
+  ; {|type Option a = None | Some a
 
       let Some x = Some 1
 
@@ -183,11 +180,10 @@ let tests =
         opt_ref := Some 2
 
      |}
-  ; {|(x)
+  ; {|export (x)
       let Ref x = Ref 0
      |}
-  ; {|()
-      type Option a = Some a | None
+  ; {|type Option a = Some a | None
 
       let id = fun x -> x
 
@@ -197,7 +193,7 @@ let tests =
 
       let int_ref = generalize_me 0
      |}
-  ; {|()
+  ; {|export ()
       type Option a = Some a | None
 
       let generalize_me = (fun x -> x) (fun x -> Ref x)
@@ -206,8 +202,7 @@ let tests =
 
       let int_ref = generalize_me 0
      |}
-  ; {|()
-      type RefProduct a b = Pair (Ref a) * (Ref b)
+  ; {|type RefProduct a b = Pair (Ref a) * (Ref b)
 
       type Option a = None | Some a
 
@@ -220,8 +215,7 @@ let tests =
           r := Some "x"
 
      |}
-  ; {|()
-      type Nat = Z | S Nat
+  ; {|type Nat = Z | S Nat
 
       type Option a = None | Some a
 
@@ -238,16 +232,14 @@ let tests =
         | Some None -> 1
 
      |}
-  ; {|()
-      type Nat = Z | S Nat
+  ; {|type Nat = Z | S Nat
 
       let rec add = fun
         | Z y -> y
         | (S x) y -> add x (S y)
 
      |}
-  ; {|()
-      type Option a = None | Some a
+  ; {|type Option a = None | Some a
 
       let ref = Ref
 
@@ -256,21 +248,17 @@ let tests =
       let _ =
         x := Some 1
      |}
-  ; {|()
-      type T = C Unit
+  ; {|type T = C Unit
 
       let x = C ()
 
       let C () = x
      |}
-  ; {|()
-
-      let r = Ref 1
+  ; {|let r = Ref 1
 
       let () = r := 2
      |}
-  ; {|()
-      type Product a b = Pair a * b
+  ; {|type Product a b = Pair a * b
 
       let f = fun x y -> Pair x y
 
@@ -280,8 +268,7 @@ let tests =
 
       let y = g 3
      |}
-  ; {|()
-      type Bool = False | True
+  ; {|type Bool = False | True
 
       let not = fun
         | False -> True
@@ -299,19 +286,16 @@ let tests =
         | False -> ()
 
      |}
-  ; {|()
-      let puts = foreign "puts" forall a . a -> Unit
+  ; {|let puts = foreign "puts" forall a . a -> Unit
 
       let () = puts "Hello world!"
      |}
-  ; {|()
-      type IntPair = Pair Int * Int
+  ; {|type IntPair = Pair Int * Int
 
       let pair = Pair 0 2
 
      |}
-  ; {|()
-      type Product a b = Pair a * b
+  ; {|type Product a b = Pair a * b
 
       type Foo = Foo Product Int String
 
@@ -343,9 +327,10 @@ let () =
     ) tests
 
 let tests =
-  [ "(id, id2, id3) let rec id = fun x -> x and id2 = id let id3 = id2 id id2"
-  ; {|()
-      type Option a = None | Some a
+  [ {|export (id, id2, id3)
+      let rec id = fun x -> x and id2 = id let id3 = id2 id id2
+    |}
+  ; {|type Option a = None | Some a
 
       let r = Ref None
 
@@ -353,8 +338,7 @@ let tests =
 
       let _ = r := Some "foo"
      |}
-  ; {|()
-      type Option a = None | Some a
+  ; {|type Option a = None | Some a
 
       let r = (fun x -> Ref x) None
 
@@ -362,8 +346,7 @@ let tests =
         r := Some 0;
         r := Some "foo"
      |}
-  ; {|()
-      type Option a = None | Some a
+  ; {|type Option a = None | Some a
 
       let r = (fun _ -> Ref None) 0
 
@@ -371,8 +354,7 @@ let tests =
         r := Some 0;
         r := Some "foo"
      |}
-  ; {|()
-      type RefProduct a b = Pair (Ref a) * (Ref b)
+  ; {|type RefProduct a b = Pair (Ref a) * (Ref b)
 
       type Option a = None | Some a
 
@@ -385,8 +367,7 @@ let tests =
           l := Some "x"
 
      |}
-  ; {|()
-      let mkRef = foreign "ref" forall a!1 . a -> Ref a
+  ; {|let mkRef = foreign "ref" forall a!1 . a -> Ref a
 
       type Option a = None | Some a
 
@@ -396,9 +377,7 @@ let tests =
 
       let _ = x := Some "foo"
      |}
-  ; {|()
-
-      type T a = T (Ref a)
+  ; {|type T a = T (Ref a)
 
       type U a = U (T a)
 
@@ -420,9 +399,7 @@ let tests =
         x := Some 1
 
      |}
-  ; {|()
-
-      type T a = T (Ref a)
+  ; {|type T a = T (Ref a)
 
       type U a = U (T a)
 
@@ -441,8 +418,7 @@ let tests =
       let _ = f "" x
 
      |}
-  ; {|()
-      type Option a = None | Some a
+  ; {|type Option a = None | Some a
 
       let ref = Ref
 
@@ -452,8 +428,7 @@ let tests =
         x := Some 1;
         x := Some ""
      |}
-  ; {|()
-      type Option a = None | Some a
+  ; {|type Option a = None | Some a
 
       let () = None
      |} ]

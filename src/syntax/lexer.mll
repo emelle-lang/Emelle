@@ -10,6 +10,7 @@
       [ "and", AND
       ; "case", CASE
       ; "else", ELSE
+      ; "export", EXPORT
       ; "forall", FORALL
       ; "foreign", FOREIGN
       ; "fun", FUN
@@ -17,7 +18,6 @@
       ; "in", IN
       ; "let", LET
       ; "rec", REC
-      ; "self", SELF
       ; "then", THEN
       ; "type", TYPE
       ; "with", WITH ]
