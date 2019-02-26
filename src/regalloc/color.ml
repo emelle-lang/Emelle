@@ -43,9 +43,7 @@ let alloc_reg ctx reg =
   Hashtbl.set ctx.live_regs ~key:reg ~data:color
 
 let handle_ending_regs ctx regs =
-  let open Result.Monad_infix in
-  Set.fold regs ~init:(Ok ()) ~f:(fun acc reg ->
-      acc >>= fun () ->
+  Set.fold_result regs ~init:() ~f:(fun () reg ->
       match Hashtbl.find_and_remove ctx.live_regs reg with
       | None ->
          Message.unreachable
@@ -59,11 +57,7 @@ let handle_instr ctx instr =
   ignore (Option.map ~f:(fun dest -> alloc_reg ctx dest) instr.Ssa2.dest)
 
 let handle_instrs ctx =
-  let open Result.Monad_infix in
-  List.fold ~init:(Ok ()) ~f:(fun acc instr ->
-      acc >>= fun () ->
-      handle_instr ctx instr
-    )
+  List.fold_result ~init:() ~f:(fun () instr -> handle_instr ctx instr)
 
 let rec handle_block ctx proc label =
   let open Result.Monad_infix in
@@ -99,11 +93,10 @@ let rec handle_block ctx proc label =
            handle_instrs ctx block.Ssa2.instrs >>= fun () ->
            handle_ending_regs ctx block.Ssa2.ending_at_jump >>= fun () ->
            let succs = Ssa.successors block.Ssa2.jump in
-           List.fold succs ~init:(Ok ()) ~f:(fun acc label ->
+           List.fold_result succs ~init:() ~f:(fun () label ->
                (* Use a physically distinct state *)
                let ctx =
                  { ctx with live_regs = Hashtbl.create (module Ir.Register) } in
-               acc >>= fun () ->
                handle_block ctx proc label)
 
 let handle_proc proc =

@@ -95,13 +95,11 @@ let rec compile_basic_block new_blocks coloring proc label =
      | Some block ->
         let instrs = Queue.create () in
         let%bind params =
-          List.fold block.Ssa2.params ~init:(Ok []) ~f:(fun acc reg_param ->
-              let%bind list = acc in
-              find_color coloring reg_param (fun color -> Ok (color::list))
+          List.fold_result block.Ssa2.params ~init:[] ~f:(fun acc reg_param ->
+              find_color coloring reg_param (fun color -> Ok (color::acc))
             ) in
         let%bind () =
-          List.fold block.Ssa2.instrs ~init:(Ok ()) ~f:(fun acc instr ->
-              let%bind () = acc in
+          List.fold_result block.Ssa2.instrs ~init:() ~f:(fun () instr ->
               let%map instr = compile_instr coloring instr.Ssa2.opcode in
               Queue.enqueue instrs instr) in
         let%map new_blocks = match block.Ssa2.jump with
@@ -110,9 +108,8 @@ let rec compile_basic_block new_blocks coloring proc label =
              let%bind new_blocks, asm_block =
                compile_basic_block new_blocks coloring proc label in
              let%map _ =
-               List.fold asm_block.Asm.block_params ~init:(Ok 0)
-                 ~f:(fun acc color ->
-                   let%bind idx = acc in
+               List.fold_result asm_block.Asm.block_params ~init:0
+                 ~f:(fun idx color ->
                    let%map operand = compile_operand coloring (args.(idx)) in
                    Queue.enqueue instrs (Asm.Move(color, operand));
                    idx + 1
@@ -130,8 +127,8 @@ let rec compile_basic_block new_blocks coloring proc label =
              let%bind scrut = compile_operand coloring scrut in
              Queue.enqueue instrs (Asm.Switch(scrut, cases, else_case));
              let%bind new_blocks =
-               List.fold cases ~init:(Ok new_blocks) ~f:(fun acc (_, label) ->
-                   let%bind new_blocks = acc in
+               List.fold_result cases ~init:new_blocks
+                 ~f:(fun new_blocks (_, label) ->
                    let%map new_blocks, _ =
                      compile_basic_block new_blocks coloring proc label
                    in new_blocks

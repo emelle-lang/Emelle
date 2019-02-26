@@ -212,14 +212,13 @@ and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
     [instr_of_typedtree]. *)
 and compile_letrec self ann bindings ~cont =
   let open Result.Monad_infix in
-  List.fold ~f:(fun acc (lhs, rhs) ->
-      acc >>= fun list ->
+  List.fold_result bindings ~init:[] ~f:(fun list (lhs, rhs) ->
       let var = fresh_register self in
       match Hashtbl.add self.ctx ~key:lhs ~data:var with
       | `Duplicate ->
          Message.error ann (Message.Unreachable_error "Bytecode comp letrec")
       | `Ok -> Ok ((var, rhs)::list)
-    ) ~init:(Ok []) bindings >>= fun list ->
+    ) >>= fun list ->
   let rec f bindings = function
     | (var, rhs)::rest ->
        instr_of_typedtree self rhs ~cont:(fun opcode ->
