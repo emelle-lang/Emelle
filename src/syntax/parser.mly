@@ -3,17 +3,14 @@
 
 %token AND
 %token CASE
-%token ELSE
 %token EXPORT
 %token FORALL
 %token FOREIGN
 %token FUN
-%token IF
 %token IN
 %token LET
 %token REC
 %token REF
-%token THEN
 %token TYPE
 %token WITH
 
@@ -28,6 +25,7 @@
 %token COMMA
 %token DOT
 %token EQUALS
+%token QUESTION
 %token SEMICOLON
 %token STAR
 %token UNDERSCORE
@@ -216,6 +214,9 @@ let expr_atom :=
   | LPARENS; RPARENS;
       { { Ast.expr_ann = ($symbolstartpos, $endpos)
         ; expr_node =  Ast.Lit Literal.Unit } }
+  | QUESTION;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Typed_hole } }
   | LPARENS; ~ = expr; RPARENS; { expr }
 
 let pattern :=

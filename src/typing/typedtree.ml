@@ -16,6 +16,7 @@ type ('ann, 'a) expr =
   | Prim of string
   | Ref
   | Seq of 'a * 'a
+  | Typed_hole of Term.env * (Ident.t, Type.t) Hashtbl.t * Type.t
 
 type 'a t = {
     ann : 'a;

@@ -56,6 +56,7 @@ and 'a expr' =
   | Prim of string * 'a polytype
   | Ref
   | Seq of 'a expr * 'a expr
+  | Typed_hole
   | Var of qual_id
 
 and 'a lambda_case = 'a pattern * 'a pattern list * 'a expr

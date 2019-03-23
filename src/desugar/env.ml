@@ -12,17 +12,16 @@ let of_map map =
   { curr = map
   ; parents = Map.empty (Map.comparator_s map) }
 
-let extend parent map =
-  let combine ~key:_ x _ = x in
-  { curr = map
-  ; parents = Map.merge_skewed parent.parents parent.curr ~combine }
+let to_map env =
+  (* Prefer curr over parents *)
+  let combine ~key:_ _ x = x in
+  Map.merge_skewed env.parents env.curr ~combine
 
-let in_scope_with f frame env =
-  let combine ~key:_ x _ = x in
-  let env =
-    { curr = frame
-    ; parents = Map.merge_skewed env.curr env.parents ~combine:combine }
-  in f env
+let extend parent map =
+  { curr = map
+  ; parents = to_map parent }
+
+let in_scope_with f frame env = f (extend env frame)
 
 let in_scope f env = in_scope_with f (Map.empty (Map.comparator_s env.curr)) env
 

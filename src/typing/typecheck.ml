@@ -503,6 +503,10 @@ let rec infer_term checker Term.{ term; ann } =
      infer_term checker t >>| fun t ->
      { Typedtree.ann; ty = t.Typedtree.ty; expr = Typedtree.Seq(s, t) }
 
+  | Term.Typed_hole env ->
+     let ty = fresh_tvar checker in
+     Ok { Typedtree.ann; ty; expr = Typedtree.Typed_hole(env, checker.env, ty) }
+
   | Term.Var id ->
      match Hashtbl.find checker.env id with
      | Some ty ->

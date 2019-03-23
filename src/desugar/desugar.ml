@@ -196,6 +196,8 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
        term_of_expr st env t >>| fun t ->
        Term.Seq(s, t)
 
+    | Ast.Typed_hole -> Ok (Term.Typed_hole env)
+
     | Ast.Var qual_id ->
        match qual_id with
        | Ast.Internal name -> (* Unqualified name *)

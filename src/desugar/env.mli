@@ -6,6 +6,8 @@ val empty : ('k, 'cmp) Base.Map.comparator -> ('k, 'v, 'cmp) t
 
 val of_map : ('k, 'v, 'cmp) Base.Map.t -> ('k, 'v, 'cmp) t
 
+val to_map : ('k, 'v, 'cmp) t -> ('k, 'v, 'cmp) Base.Map.t
+
 val extend : ('k, 'v, 'cmp) t -> ('k, 'v, 'cmp) Base.Map.t -> ('k, 'v, 'cmp) t
 
 val in_scope_with :

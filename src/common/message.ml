@@ -14,6 +14,8 @@ type error =
   | Reexported_name of string
   | Too_many_fields
   | Type_unification_fail of Type.t * Type.t
+  | Typed_hole of (string, Ident.t, String.comparator_witness) Env.t
+                  * (Ident.t, Type.t) Hashtbl.t * Type.t
   | Unimplemented of string
   | Unknown_constr of Path.t * string
   | Unreachable_error of string

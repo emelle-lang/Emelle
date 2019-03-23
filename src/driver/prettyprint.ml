@@ -76,6 +76,14 @@ let rec print_type pp parent_prec ty =
      Buffer.add_char pp.buffer 't';
      Buffer.add_string pp.buffer (Int.to_string id)
 
+let get_relevant_bindings env tctx _ty =
+  let map = Env.to_map env in
+  Map.fold map ~init:[] ~f:(fun ~key ~data acc ->
+      match Hashtbl.find tctx data with
+      | None -> acc
+      | Some ty -> (key, ty)::acc
+    )
+
 let print_error pp = function
   | Message.Abstract_type id ->
      Buffer.add_string pp.buffer "Abstract type ";
@@ -87,6 +95,19 @@ let print_error pp = function
      print_type pp (-1) t1;
      Buffer.add_string pp.buffer " and ";
      print_type pp (-1) t2
+  | Message.Typed_hole(env, tctx, ty) ->
+     let rel_bindings = get_relevant_bindings env tctx ty in
+     Buffer.add_string pp.buffer "Found typed hole:";
+     newline pp;
+     List.iter rel_bindings ~f:(fun (name, ty) ->
+         Buffer.add_string pp.buffer name;
+         Buffer.add_string pp.buffer " : ";
+         print_type pp (-1) ty;
+         newline pp
+       );
+     Buffer.add_string pp.buffer "_______________________";
+     newline pp;
+     print_type pp (-1) ty
   | Message.Unreachable_error str ->
      Buffer.add_string pp.buffer "Unreachable ";
      Buffer.add_string pp.buffer str

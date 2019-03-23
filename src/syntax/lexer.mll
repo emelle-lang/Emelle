@@ -9,16 +9,13 @@
       (module String)
       [ "and", AND
       ; "case", CASE
-      ; "else", ELSE
       ; "export", EXPORT
       ; "forall", FORALL
       ; "foreign", FOREIGN
       ; "fun", FUN
-      ; "if", IF
       ; "in", IN
       ; "let", LET
       ; "rec", REC
-      ; "then", THEN
       ; "type", TYPE
       ; "with", WITH ]
 
@@ -52,6 +49,7 @@ rule expr = parse
   | ',' { COMMA }
   | '.' { DOT }
   | '=' { EQUALS }
+  | '?' { QUESTION }
   | ';' { SEMICOLON }
   | '*' { STAR }
   | '_' { UNDERSCORE }

@@ -207,6 +207,8 @@ and instr_of_typedtree self ({ Typedtree.ann; expr; _ } as typedtree) ~cont =
          let var = fresh_register self in
          { Anf.ann; instr = Let(var, s, t) }
        )
+  | Typedtree.Typed_hole(env, tctx, ty) ->
+     Message.error typedtree.Typedtree.ann (Message.Typed_hole (env, tctx, ty))
 
 (** This function implements the compilation of a let-rec expression, as used in
     [instr_of_typedtree]. *)
@@ -256,6 +258,8 @@ and operand_of_typedtree self typedtree ~cont =
   | Typedtree.Local_var id ->
      Message.at typedtree.Typedtree.ann (free_var self id)
      >>= fun reg -> cont (Ir.Operand.Register reg)
+  | Typedtree.Typed_hole(env, tctx, ty) ->
+     Message.error typedtree.Typedtree.ann (Message.Typed_hole (env, tctx, ty))
   | _ ->
      instr_of_typedtree self typedtree ~cont:(fun rhs ->
          let var = fresh_register self in

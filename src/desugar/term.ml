@@ -1,5 +1,7 @@
 open Base
 
+type env = (string, Ident.t, String.comparator_witness) Env.t
+
 type ('ann, 'fix) term =
   | App of 'fix * 'fix
   | Assign of 'fix * 'fix
@@ -13,6 +15,7 @@ type ('ann, 'fix) term =
   | Prim of string * 'ann Ast.polytype
   | Ref
   | Seq of 'fix * 'fix
+  | Typed_hole of env
   | Var of Ident.t
 
 and ('a, 'fix) rec_binding = {
@@ -45,6 +48,6 @@ type 'a item = {
 type 'a file = {
     top_ann : 'a;
     exports : string list;
-    env : (string, Ident.t, String.comparator_witness) Env.t;
+    env : env;
     items : 'a item list;
   }
