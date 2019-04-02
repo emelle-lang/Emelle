@@ -1,3 +1,8 @@
+(* Copyright (C) 2018-2019 TheAspiringHacker.
+
+   This Source Code Form is subject to the terms of the Mozilla Public
+   License, v. 2.0. If a copy of the MPL was not distributed with this
+   file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
 (** A processed compilation unit:
     - Maps type constructor names to type declarations (abstract types or ADTs)
     - Maps data constructor names to ADTs and the integer index
