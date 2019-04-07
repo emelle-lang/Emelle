@@ -1,0 +1,4 @@
+(executable
+  (name main)
+  (libraries bexp core_kernel emelle)
+  (preprocess (pps js_of_ocaml-ppx)))
