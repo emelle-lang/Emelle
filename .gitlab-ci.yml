@@ -19,8 +19,10 @@ before_script:
 build:
   stage: build
   script:
-  - dune build app/main.exe
-  - dune build try/main.bc.js
+  - dune build app/main.exe --profile release
+  - dune build editor/main.bc.js --profile release
+  - dune build editor/index.html
+  - dune build try/main.bc.js --profile release
   - dune build try/stylesheet.css
   - dune build try/index.html
   artifacts:
@@ -38,6 +40,7 @@ pages:
   - dune build @doc
   - mkdir public
   - mv _build/main/_doc/_html public/doc
+  - mv _build/main/editor public/editor
   - mv _build/main/try public/try
   artifacts:
     paths:
