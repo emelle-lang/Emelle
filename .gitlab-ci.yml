@@ -11,6 +11,7 @@ before_script:
 - opam update
 - opam install -y -q dune
 - opam install -y -q base
+- opam install -y -q core_kernel
 - opam install -y -q stdio
 - opam install -y -q ppx_jane
 - opam install -y -q menhir
