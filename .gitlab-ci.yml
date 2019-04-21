@@ -26,6 +26,7 @@ build:
   - dune build app/main.exe --profile release
   - dune build editor/main.bc.js --profile release
   - dune build editor/index.html
+  - dune build editor/stylesheet.css
   - dune build try/main.bc.js --profile release
   - dune build try/stylesheet.css
   - dune build try/index.html

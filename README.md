@@ -3,6 +3,9 @@
 Emelle is a work-in-progress
 [ML](https://en.wikipedia.org/wiki/ML_(programming_language)) dialect.
 
+**See the block-based editor at
+https://emelle.gitlab.io/emelle/editor/index.html.**
+
 ## Building
 
 First, download OPAM, the OCaml package manager.
@@ -42,6 +45,16 @@ To build it, run:
 
     dune build try/main.bc.js
     dune build try/stylesheet.css
-    dune bulid try/index.html
+    dune build try/index.html
+
+In addition to Js_of_ocaml and its ppx package, the block-based editor
+requires `core_kernel`:
+
+    opam install core_kernel
+
+To build it, run:
+
+    dune build editor/main.bc.js
+    dune build editor/index.html
 
 All of the build output will be in `_build/main`.

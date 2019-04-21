@@ -33,6 +33,7 @@ and expr =
   | ELam of ((symbols, pat) Bexp.hole * (symbols, expr) Bexp.hole)
   | ELet of ((symbols, let_def) Bexp.hole * (symbols, expr) Bexp.hole)
   | ELet_rec of ((symbols, let_rec) Bexp.hole * (symbols, expr) Bexp.hole)
+  | EUnit
   | EVar of string ref
 
 and bin_expr = (symbols, expr) Bexp.hole * (symbols, expr) Bexp.hole
@@ -277,7 +278,7 @@ let elet_def =
     ~to_term:(fun args -> ELet args)
     ~symbol_of_term:symbol_of_expr
 
-let elet_rec =
+let elet_rec_def =
   let open Bexp.Syntax in
   create
     [ text "let rec"; nt left let_rec_data; text "in"
@@ -285,6 +286,13 @@ let elet_rec =
     ~create:(fun () -> ( Bexp.Hole.create get_let_rec let_rec_data
                        , Bexp.Hole.create get_expr expr_data ))
     ~to_term:(fun args -> ELet_rec args)
+    ~symbol_of_term:symbol_of_expr
+
+let eunit_def =
+  let open Bexp.Syntax in
+  create [ text "()" ]
+    ~create:(fun () -> ())
+    ~to_term:(fun () -> EUnit)
     ~symbol_of_term:symbol_of_expr
 
 let pconstr_def =
@@ -367,7 +375,8 @@ let expr_palette =
     ; Bexp.Syntax ecase_def
     ; Bexp.Syntax elam_def
     ; Bexp.Syntax elet_def
-    ; Bexp.Syntax elet_rec
+    ; Bexp.Syntax elet_rec_def
+    ; Bexp.Syntax eunit_def
     ; Bexp.Syntax evar_def ]
 
 let let_rec_palette =
