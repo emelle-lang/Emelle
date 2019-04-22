@@ -21,7 +21,7 @@ and let_def = {
   }
 
 and let_rec = {
-    let_rec_ident : string ref;
+    let_rec_ident : Bexp.Widget.text_input;
     let_rec_expr : (symbols, expr) Bexp.hole;
     let_rec_next : (symbols, let_rec) Bexp.hole;
   }
@@ -33,15 +33,17 @@ and expr =
   | ELam of ((symbols, pat) Bexp.hole * (symbols, expr) Bexp.hole)
   | ELet of ((symbols, let_def) Bexp.hole * (symbols, expr) Bexp.hole)
   | ELet_rec of ((symbols, let_rec) Bexp.hole * (symbols, expr) Bexp.hole)
+  | ESeq of bin_expr
   | EUnit
-  | EVar of string ref
+  | EVar of Bexp.Widget.text_input
 
 and bin_expr = (symbols, expr) Bexp.hole * (symbols, expr) Bexp.hole
 
 and pat =
-  | PConstr of (string ref * (symbols, pat_list) Bexp.hole)
+  | PConstr of (Bexp.Widget.text_input * (symbols, pat_list) Bexp.hole)
+  | PRef of (symbols, pat) Bexp.hole
   | PUnit
-  | PVar of string ref
+  | PVar of Bexp.Widget.text_input
   | PWild
 
 and pat_list =
@@ -155,11 +157,11 @@ let pat_data =
   ; palette_color = "blue" }
 
 let pat_list_data =
-  { Bexp.palette_name = "Patterns"
+  { Bexp.palette_name = "Patterns..."
   ; palette_color = "green" }
 
 let branch_data =
-  { Bexp.palette_name = "Match Case"
+  { Bexp.palette_name = "Match Cases..."
   ; palette_color = "pink" }
 
 let ctx =
@@ -170,9 +172,11 @@ let setter r str =
   r := str;
   str
 
+let id x = x
+
 let module_def =
   let open Bexp.Syntax in
-  create [ text "module"; text "where"; newline; nt (fun x -> x) items_data ]
+  create [ text "module"; text "where"; newline; nt id items_data ]
     ~create:(fun () -> Bexp.Hole.create get_items items_data)
     ~to_term:(fun items -> { items })
     ~symbol_of_term:symbol_of_modul
@@ -213,28 +217,20 @@ let let_def_def =
 
 let let_rec_def =
   let open Bexp.Syntax in
-  let ident = ref "x" in
+  let input = Bexp.Widget.create_text_input "x" in
   create
-    [ text_input ~str:"x" (setter ident)
+    [ widget input (fun { let_rec_ident; _ } -> let_rec_ident)
     ; text "="
     ; nt (fun { let_rec_expr; _ } -> let_rec_expr) expr_data
     ; text "and"
     ; newline
     ; nt (fun { let_rec_next; _ } -> let_rec_next) let_rec_data ]
     ~create:(fun () ->
-      { let_rec_ident = ident
+      { let_rec_ident = Bexp.Widget.create_text_input input#value
       ; let_rec_expr = Bexp.Hole.create get_expr expr_data
       ; let_rec_next = Bexp.Hole.create get_let_rec let_rec_data })
     ~to_term:(fun x -> x)
     ~symbol_of_term:symbol_of_let_rec
-
-let evar_def =
-  let open Bexp.Syntax in
-  let str_ref = ref "x" in
-  create [ text_input ~str:"x" (setter str_ref) ]
-    ~create:(fun () -> str_ref)
-    ~to_term:(fun name -> EVar name)
-    ~symbol_of_term:symbol_of_expr
 
 let eapp_def =
   let open Bexp.Syntax in
@@ -288,6 +284,15 @@ let elet_rec_def =
     ~to_term:(fun args -> ELet_rec args)
     ~symbol_of_term:symbol_of_expr
 
+let eseq_def =
+  let open Bexp.Syntax in
+  create [ nt left expr_data; text ";"; newline; nt right expr_data ]
+    ~create:(fun () ->
+      ( Bexp.Hole.create get_expr expr_data
+      , Bexp.Hole.create get_expr expr_data ))
+    ~to_term:(fun args -> ESeq args)
+    ~symbol_of_term:symbol_of_expr
+
 let eunit_def =
   let open Bexp.Syntax in
   create [ text "()" ]
@@ -295,12 +300,29 @@ let eunit_def =
     ~to_term:(fun () -> EUnit)
     ~symbol_of_term:symbol_of_expr
 
+let evar_def =
+  let open Bexp.Syntax in
+  let input = Bexp.Widget.create_text_input "x" in
+  create [ widget input id ]
+    ~create:(fun () -> Bexp.Widget.create_text_input input#value)
+    ~to_term:(fun input -> EVar input)
+    ~symbol_of_term:symbol_of_expr
+
 let pconstr_def =
   let open Bexp.Syntax in
-  let str_ref = ref "Constr" in
-  create [ text_input ~str:"Constr" (setter str_ref); nt right pat_list_data ]
-    ~create:(fun () -> (str_ref, Bexp.Hole.create get_pat_list pat_list_data))
+  let input = Bexp.Widget.create_text_input "Constr" in
+  create [ widget input left; nt right pat_list_data ]
+    ~create:(fun () ->
+      ( Bexp.Widget.create_text_input input#value
+      , Bexp.Hole.create get_pat_list pat_list_data ))
     ~to_term:(fun x -> PConstr x)
+    ~symbol_of_term:symbol_of_pat
+
+let pref_def =
+  let open Bexp.Syntax in
+  create [text "ref"; nt id pat_data ]
+    ~create:(fun () -> Bexp.Hole.create get_pat pat_data)
+    ~to_term:(fun p -> PRef p)
     ~symbol_of_term:symbol_of_pat
 
 let punit_def =
@@ -312,10 +334,10 @@ let punit_def =
 
 let pvar_def =
   let open Bexp.Syntax in
-  let str_ref = ref "x" in
-  create [text_input ~str:"x" (setter str_ref)]
-    ~create:(fun () -> str_ref)
-    ~to_term:(fun r -> PVar r)
+  let input = Bexp.Widget.create_text_input "x" in
+  create [widget input id]
+    ~create:(fun () -> Bexp.Widget.create_text_input input#value)
+    ~to_term:(fun input -> PVar input)
     ~symbol_of_term:symbol_of_pat
 
 let pwild_def =
@@ -339,6 +361,8 @@ let branch_def =
   create
     [ nt (fun { branch_pat; _ } -> branch_pat) pat_data
     ; text "->"
+    ; newline
+    ; tab
     ; nt (fun { branch_expr; _ } -> branch_expr) expr_data
     ; newline
     ; nt (fun { branch_next; _ } -> branch_next) branch_data ]
@@ -364,6 +388,7 @@ let pat_palette =
     pat_data
     [ Bexp.Syntax pconstr_def
     ; Bexp.Syntax punit_def
+    ; Bexp.Syntax pref_def
     ; Bexp.Syntax pvar_def
     ; Bexp.Syntax pwild_def ]
 
@@ -376,6 +401,7 @@ let expr_palette =
     ; Bexp.Syntax elam_def
     ; Bexp.Syntax elet_def
     ; Bexp.Syntax elet_rec_def
+    ; Bexp.Syntax eseq_def
     ; Bexp.Syntax eunit_def
     ; Bexp.Syntax evar_def ]
 
