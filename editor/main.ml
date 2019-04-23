@@ -3,8 +3,10 @@
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Core_kernel
 open Js_of_ocaml
+open Emelle
 
 type modul = {
     items : (symbols, items) Bexp.hole;
@@ -119,19 +121,6 @@ let left (l, _) = l
 
 let right (_, r) = r
 
-let svg =
-  match
-    Dom_svg.getElementById "workspace"
-    |> Dom_svg.CoerceTo.svg
-    |> Js.Opt.to_option
-  with
-  | None -> assert false
-  | Some svg -> svg
-
-let width = Bexp.Widget.length_of_anim svg##.width
-
-let height = Bexp.Widget.length_of_anim svg##.height
-
 let module_data =
   { Bexp.palette_name = "Module"
   ; palette_color = "orange" }
@@ -164,13 +153,22 @@ let branch_data =
   { Bexp.palette_name = "Match Cases..."
   ; palette_color = "pink" }
 
+let svg =
+  match
+    Dom_svg.getElementById "workspace"
+    |> Dom_svg.CoerceTo.svg
+    |> Js.Opt.to_option
+  with
+  | None -> assert false
+  | Some svg -> svg
+
+let width = Bexp.Widget.length_of_anim svg##.width
+
+let height = Bexp.Widget.length_of_anim svg##.height
+
 let ctx =
   Bexp.create ~x:0.0 ~y:0.0 ~width ~height
     (Bexp.Hole.create get_module module_data)
-
-let setter r str =
-  r := str;
-  str
 
 let id x = x
 
@@ -190,7 +188,7 @@ let ilet_def =
     ~to_term:(fun let_def -> ILet let_def)
     ~symbol_of_term:symbol_of_items
 
-let ilet_rec =
+let ilet_rec_def =
   let open Bexp.Syntax in
   create [ text "let rec"; nt left let_rec_data; newline; nt right items_data ]
     ~create:(fun () ->
@@ -235,16 +233,18 @@ let let_rec_def =
 let eapp_def =
   let open Bexp.Syntax in
   create [nt left expr_data; text "("; nt right expr_data; text ")"]
-    ~create:(fun () -> ( Bexp.Hole.create get_expr expr_data
-                       , Bexp.Hole.create get_expr expr_data ))
+    ~create:(fun () ->
+      ( Bexp.Hole.create get_expr expr_data
+      , Bexp.Hole.create get_expr expr_data ))
     ~to_term:(fun args -> EApp args)
     ~symbol_of_term:symbol_of_expr
 
 let eassn_def =
   let open Bexp.Syntax in
   create [nt left expr_data; text ":="; nt right expr_data]
-    ~create:(fun () -> ( Bexp.Hole.create get_expr expr_data
-                       , Bexp.Hole.create get_expr expr_data ))
+    ~create:(fun () ->
+      ( Bexp.Hole.create get_expr expr_data
+      , Bexp.Hole.create get_expr expr_data ))
     ~to_term:(fun args -> EAssign args)
     ~symbol_of_term:symbol_of_expr
 
@@ -252,16 +252,18 @@ let ecase_def =
   let open Bexp.Syntax in
   create
     [ text "case"; nt left expr_data; text "of"; newline; nt right branch_data ]
-    ~create:(fun () -> ( Bexp.Hole.create get_expr expr_data
-                       , Bexp.Hole.create get_branch branch_data ))
+    ~create:(fun () ->
+      ( Bexp.Hole.create get_expr expr_data
+      , Bexp.Hole.create get_branch branch_data ))
     ~to_term:(fun args -> ECase args)
     ~symbol_of_term:symbol_of_expr
 
 let elam_def =
   let open Bexp.Syntax in
   create [ text "fun"; nt left pat_data; text "->"; nt right expr_data ]
-    ~create:(fun () -> ( Bexp.Hole.create get_pat pat_data
-                       , Bexp.Hole.create get_expr expr_data ))
+    ~create:(fun () ->
+      ( Bexp.Hole.create get_pat pat_data
+      , Bexp.Hole.create get_expr expr_data ))
     ~to_term:(fun args -> ELam args)
     ~symbol_of_term:symbol_of_expr
 
@@ -269,8 +271,9 @@ let elet_def =
   let open Bexp.Syntax in
   create
     [ text "let"; nt left let_def_data; text "in"; newline; nt right expr_data ]
-    ~create:(fun () -> ( Bexp.Hole.create get_let_def let_def_data
-                       , Bexp.Hole.create get_expr expr_data ))
+    ~create:(fun () ->
+      ( Bexp.Hole.create get_let_def let_def_data
+      , Bexp.Hole.create get_expr expr_data ))
     ~to_term:(fun args -> ELet args)
     ~symbol_of_term:symbol_of_expr
 
@@ -279,8 +282,9 @@ let elet_rec_def =
   create
     [ text "let rec"; nt left let_rec_data; text "in"
     ; newline; nt right expr_data ]
-    ~create:(fun () -> ( Bexp.Hole.create get_let_rec let_rec_data
-                       , Bexp.Hole.create get_expr expr_data ))
+    ~create:(fun () ->
+      ( Bexp.Hole.create get_let_rec let_rec_data
+      , Bexp.Hole.create get_expr expr_data ))
     ~to_term:(fun args -> ELet_rec args)
     ~symbol_of_term:symbol_of_expr
 
@@ -415,11 +419,134 @@ let let_def_palette =
 
 let items_palette =
   Bexp.Palette.create ctx.Bexp.workspace (Some (Palette let_def_palette))
-    items_data [ Bexp.Syntax ilet_def; Bexp.Syntax ilet_rec ]
+    items_data [ Bexp.Syntax ilet_def; Bexp.Syntax ilet_rec_def ]
 
 let module_palette =
   Bexp.Palette.create ctx.Bexp.workspace (Some (Palette items_palette))
     module_data [ Bexp.Syntax module_def ]
+
+let rec compile_pattern hole =
+  let node = match hole.Bexp.hole_term with
+    | None -> Ast.Wild
+    | Some term ->
+       match term.Bexp.term with
+       | PWild -> Ast.Wild
+       | PUnit -> Ast.Unit
+       | PVar input -> Ast.Var (input#value)
+       | PRef pat -> Ast.Deref (compile_pattern pat)
+       | PConstr(constr, pats) ->
+          Ast.Con(Ast.Internal constr#value, compile_patterns pats)
+  in { Ast.pat_ann = Bexp.Hole hole; pat_node = node }
+
+and compile_patterns hole =
+  match hole.Bexp.hole_term with
+  | None -> []
+  | Some { Bexp.term = PList(p, ps); _ }->
+     compile_pattern p :: compile_patterns ps
+
+let rec compile_branch hole =
+  match hole.Bexp.hole_term with
+  | None -> []
+  | Some term ->
+     let { branch_pat = pat
+         ; branch_expr = expr
+         ; branch_next = next } = term.Bexp.term
+     in (compile_pattern pat, compile_expr expr) :: compile_branch next
+
+and compile_expr hole =
+  let node = match hole.Bexp.hole_term with
+    | None -> Ast.Typed_hole
+    | Some term ->
+       match term.Bexp.term with
+       | EApp(f, x) -> Ast.App(compile_expr f, compile_expr x)
+       | EAssign(l, r) -> Ast.Assign(compile_expr l, compile_expr r)
+       | ECase(scrut, branches) ->
+          Ast.Case(compile_expr scrut, compile_branch branches)
+       | ELam(pat, body) ->
+          Ast.Lam((compile_pattern pat, [], compile_expr body), [])
+       | ELet(defs, body) ->
+          Ast.Let(compile_let_def defs, compile_expr body)
+       | ELet_rec(defs, body) ->
+          Ast.Let_rec(compile_let_rec defs, compile_expr body)
+       | ESeq(f, s) -> Ast.Seq(compile_expr f, compile_expr s)
+       | EUnit -> Ast.Lit Literal.Unit
+       | EVar input -> Ast.Var (Ast.Internal input#value)
+  in { Ast.expr_ann = Bexp.Hole hole; expr_node = node }
+
+and compile_let_def hole =
+  match hole.Bexp.hole_term with
+  | None -> []
+  | Some term ->
+     let { let_pat = pat
+         ; let_expr = expr
+         ; let_next = next } = term.Bexp.term in
+     { Ast.let_ann = Bexp.Hole hole
+     ; let_lhs = compile_pattern pat
+     ; let_rhs = compile_expr expr } :: compile_let_def next
+
+and compile_let_rec hole =
+  match hole.Bexp.hole_term with
+  | None -> []
+  | Some term ->
+     let { let_rec_ident = ident
+         ; let_rec_expr = expr
+         ; let_rec_next = next } = term.Bexp.term in
+     { Ast.rec_ann = Bexp.Hole hole
+     ; rec_lhs = ident#value
+     ; rec_rhs = compile_expr expr } :: compile_let_rec next
+
+let rec compile_items hole =
+  match hole.Bexp.hole_term with
+  | None -> []
+  | Some term ->
+     let node, next = match term.Bexp.term with
+       | ILet(defs, next) ->
+          Ast.Let (compile_let_def defs), next
+       | ILet_rec(defs, next) ->
+          Ast.Let_rec (compile_let_rec defs), next
+     in
+     { Ast.item_ann = Bexp.Hole hole; item_node = node } :: compile_items next
+
+let compile_module hole =
+  match hole.Bexp.hole_term with
+  | None -> None
+  | Some modl ->
+     Some
+       { Ast.file_ann = Bexp.Hole hole
+       ; file_exports = []
+       ; file_items = compile_items modl.Bexp.term.items }
+
+let typecheck_button =
+  match
+    Dom_html.getElementById "typecheck"
+    |> Dom_html.CoerceTo.button |> Js.Opt.to_option
+  with
+  | None -> assert false
+  | Some button -> button
+
+let () =
+  typecheck_button##.onclick :=
+    Dom.handler (fun _ ->
+        begin match compile_module ctx.Bexp.hole with
+        | None -> ()
+        | Some modl ->
+           match
+             let name = "main" in
+             let package = Package.create name in
+             let packages = Hashtbl.create (module String) in
+             let _ = Hashtbl.add packages ~key:name ~data:package in
+             let open Result.Monad_infix in
+             let typechecker = Typecheck.create package packages in
+             let env = Env.empty (module String) in
+             Desugar.desugar typechecker env package packages modl
+             >>= fun term_file ->
+             Typecheck.typecheck typechecker term_file
+           with
+           | Ok _ -> Caml.print_endline "Ok!"
+           | Error _ -> Caml.print_endline "Err!"
+        end;
+        Js._false
+      )
 
 let () =
   Bexp.Toolbox.set_palette ctx.Bexp.workspace.toolbox module_palette;

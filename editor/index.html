@@ -7,10 +7,25 @@
     <title>Emelle</title>
   </head>
   <body>
-    <div id='main-div'>
-      <svg id='workspace' width='100%' height='100%'>
-      </svg>
+    <div id='header'>
+      <span class='menu-option'>
+        Emelle
+      </span>
+      <span class='menu-option'>
+        <button id='typecheck' type='button'>
+          Check
+        </button>
+      </span>
     </div>
+    <div id='main-div'>
+      <span id='workspace-span'>
+        <svg id='workspace' width='100%' height='100%'>
+        </svg>
+      </span>
+      <span id='output'>
+      </span>
+    </div>
+    <script src='main.bc.runtime.js'></script>
     <script src='main.bc.js'></script>
   </body>
 </html>

@@ -1,17 +1,62 @@
-html {
-  height: 100%;
-}
-
-body {
+html, body {
   height: 100%;
   margin: 0;
 }
 
+body {
+  display: flex;
+  flex-flow: column;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#header {
+  background-color: #40b0ff;
+  color: white;
+  flex: initial;
+  font-family: sans-serif;
+}
+
+.menu-option {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+}
+
+#typecheck {
+  background-color: #00b000;
+  border-radius: 5px;
+  color: white;
+}
+
+#typecheck:active {
+  background-color: #00d000;
+}
+
 #main-div {
+  display: flex;
+  flex: auto;
+  width: 100%;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+#workspace-span {
   width: 50%;
   height: 100%;
+  flex: 1;
 }
 
 #workspace {
-  display: inline-block;
+  display: block;
+  height: 100%;
+}
+
+#output {
+  background-color: grey;
+  flex: 1;
+  width: 50%;
+  height: 100%;
+  margin: 0;
 }
