@@ -123,7 +123,7 @@ let right (_, r) = r
 
 let module_data =
   { Bexp.palette_name = "Module"
-  ; palette_color = "orange" }
+  ; palette_color = "lime" }
 
 let items_data =
   { Bexp.palette_name = "Item"
@@ -139,7 +139,7 @@ let let_rec_data =
 
 let expr_data =
   { Bexp.palette_name = "Expression"
-  ; palette_color = "red" }
+  ; palette_color = "orange" }
 
 let pat_data =
   { Bexp.palette_name = "Pattern"
@@ -153,22 +153,11 @@ let branch_data =
   { Bexp.palette_name = "Match Cases..."
   ; palette_color = "pink" }
 
-let svg =
-  match
-    Dom_svg.getElementById "workspace"
-    |> Dom_svg.CoerceTo.svg
-    |> Js.Opt.to_option
-  with
-  | None -> assert false
-  | Some svg -> svg
+let container = Dom_html.getElementById "workspace-span"
 
-let width = Bexp.Widget.length_of_anim svg##.width
+let entry_hole = Bexp.Hole.create get_module module_data
 
-let height = Bexp.Widget.length_of_anim svg##.height
-
-let ctx =
-  Bexp.create ~x:0.0 ~y:0.0 ~width ~height
-    (Bexp.Hole.create get_module module_data)
+let ctx = Bexp.Workspace.create container entry_hole
 
 let id x = x
 
@@ -378,17 +367,17 @@ let branch_def =
     ~symbol_of_term:symbol_of_branch
 
 let branch_palette =
-  Bexp.Palette.create ctx.Bexp.workspace None
+  Bexp.Palette.create ctx None
     branch_data
     [ Bexp.Syntax branch_def ]
 
 let pat_list_palette =
-  Bexp.Palette.create ctx.Bexp.workspace (Some (Palette branch_palette))
+  Bexp.Palette.create ctx (Some (Palette branch_palette))
     pat_list_data
     [ Bexp.Syntax plist_cons_def ]
 
 let pat_palette =
-  Bexp.Palette.create ctx.Bexp.workspace (Some (Palette pat_list_palette))
+  Bexp.Palette.create ctx (Some (Palette pat_list_palette))
     pat_data
     [ Bexp.Syntax pconstr_def
     ; Bexp.Syntax punit_def
@@ -397,7 +386,7 @@ let pat_palette =
     ; Bexp.Syntax pwild_def ]
 
 let expr_palette =
-  Bexp.Palette.create ctx.Bexp.workspace (Some (Palette pat_palette))
+  Bexp.Palette.create ctx (Some (Palette pat_palette))
     expr_data
     [ Bexp.Syntax eapp_def
     ; Bexp.Syntax eassn_def
@@ -410,22 +399,23 @@ let expr_palette =
     ; Bexp.Syntax evar_def ]
 
 let let_rec_palette =
-  Bexp.Palette.create ctx.Bexp.workspace (Some (Palette expr_palette))
+  Bexp.Palette.create ctx (Some (Palette expr_palette))
     let_rec_data [ Bexp.Syntax let_rec_def ]
 
 let let_def_palette =
-  Bexp.Palette.create ctx.Bexp.workspace (Some (Palette let_rec_palette))
+  Bexp.Palette.create ctx (Some (Palette let_rec_palette))
     let_def_data [ Bexp.Syntax let_def_def ]
 
 let items_palette =
-  Bexp.Palette.create ctx.Bexp.workspace (Some (Palette let_def_palette))
+  Bexp.Palette.create ctx (Some (Palette let_def_palette))
     items_data [ Bexp.Syntax ilet_def; Bexp.Syntax ilet_rec_def ]
 
 let module_palette =
-  Bexp.Palette.create ctx.Bexp.workspace (Some (Palette items_palette))
+  Bexp.Palette.create ctx (Some (Palette items_palette))
     module_data [ Bexp.Syntax module_def ]
 
 let rec compile_pattern hole =
+  Bexp.Hole.clear_error hole;
   let node = match hole.Bexp.hole_term with
     | None -> Ast.Wild
     | Some term ->
@@ -439,12 +429,14 @@ let rec compile_pattern hole =
   in { Ast.pat_ann = Bexp.Hole hole; pat_node = node }
 
 and compile_patterns hole =
+  Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | None -> []
   | Some { Bexp.term = PList(p, ps); _ }->
      compile_pattern p :: compile_patterns ps
 
 let rec compile_branch hole =
+  Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | None -> []
   | Some term ->
@@ -454,6 +446,7 @@ let rec compile_branch hole =
      in (compile_pattern pat, compile_expr expr) :: compile_branch next
 
 and compile_expr hole =
+  Bexp.Hole.clear_error hole;
   let node = match hole.Bexp.hole_term with
     | None -> Ast.Typed_hole
     | Some term ->
@@ -474,6 +467,7 @@ and compile_expr hole =
   in { Ast.expr_ann = Bexp.Hole hole; expr_node = node }
 
 and compile_let_def hole =
+  Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | None -> []
   | Some term ->
@@ -485,6 +479,7 @@ and compile_let_def hole =
      ; let_rhs = compile_expr expr } :: compile_let_def next
 
 and compile_let_rec hole =
+  Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | None -> []
   | Some term ->
@@ -496,6 +491,7 @@ and compile_let_rec hole =
      ; rec_rhs = compile_expr expr } :: compile_let_rec next
 
 let rec compile_items hole =
+  Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | None -> []
   | Some term ->
@@ -508,6 +504,7 @@ let rec compile_items hole =
      { Ast.item_ann = Bexp.Hole hole; item_node = node } :: compile_items next
 
 let compile_module hole =
+  Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | None -> None
   | Some modl ->
@@ -524,32 +521,47 @@ let typecheck_button =
   | None -> assert false
   | Some button -> button
 
+let console = Dom_html.getElementById "console"
+
+let set_console_text str =
+  console##.textContent := Js.some (Js.string str)
+
 let () =
   typecheck_button##.onclick :=
     Dom.handler (fun _ ->
-        begin match compile_module ctx.Bexp.hole with
+        begin match compile_module entry_hole with
         | None -> ()
         | Some modl ->
            match
-             let name = "main" in
-             let package = Package.create name in
              let packages = Hashtbl.create (module String) in
-             let _ = Hashtbl.add packages ~key:name ~data:package in
-             let open Result.Monad_infix in
-             let typechecker = Typecheck.create package packages in
+             let compiler = Pipeline.create "main" packages in
              let env = Env.empty (module String) in
-             Desugar.desugar typechecker env package packages modl
-             >>= fun term_file ->
-             Typecheck.typecheck typechecker term_file
+             Pipeline.compile_frontend compiler env modl
            with
            | Ok _ -> Caml.print_endline "Ok!"
-           | Error _ -> Caml.print_endline "Err!"
+           | Error e ->
+              let rec f = function
+                | Message.And(fst, snd) ->
+                   f fst;
+                   f snd
+                | Message.Diagnostic d ->
+                   let Bexp.Hole hole = d.Message.loc in
+                   Bexp.Hole.set_error hole
+                     (fun () ->
+                       let pp = Prettyprint.create () in
+                       Prettyprint.print_error pp d.Message.error;
+                       set_console_text (Prettyprint.to_string pp))
+                | Message.Unreachable str ->
+                   Caml.print_endline ("Unreachable " ^ str);
+              in
+              f e;
+              set_console_text
+                ("There are errors in the program! Click the highlighted " ^
+                 "blocks to see the error message.")
         end;
         Js._false
       )
 
 let () =
-  Bexp.Toolbox.set_palette ctx.Bexp.workspace.toolbox module_palette;
-  ignore (svg##appendChild
-            (ctx.Bexp.workspace.root_layer#element :> Dom.node Js.t));
-  Bexp.Workspace.render ctx.Bexp.workspace
+  Bexp.Toolbox.set_palette ctx.Bexp.toolbox module_palette;
+  Bexp.Workspace.render ctx
