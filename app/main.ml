@@ -5,7 +5,7 @@
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
 open Base
 open Stdio
-open Emelle
+open Emmeline
 
 let () =
   let open Result.Monad_infix in

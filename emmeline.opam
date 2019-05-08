@@ -1,16 +1,16 @@
 opam-version: "2.0"
-name: "emelle"
+name: "emmeline"
 version: "prelease, OPAM file created to work with Dune public_name"
 synopsis: "An ML dialect"
 description: """
 An ML dialect
 """
-maintainer: "TAH TheAspiringHacker@protonmail.com"
-authors: "TAH TheAspiringHacker@protonmail.com"
+maintainer: "Types Logics Cats TheAspiringHacker@protonmail.com"
+authors: "Types Logics Cats TheAspiringHacker@protonmail.com"
 license: "MPL 2.0"
-homepage: "https://gitlab.com/emelle/emelle"
-bug-reports: "https://gitlab.com/emelle/emelle/issues"
-dev-repo: "https://gitlab.com/emelle/emelle"
+homepage: "https://gitlab.com/emmeline/emmeline"
+bug-reports: "https://gitlab.com/emmeline/emmeline/issues"
+dev-repo: "https://gitlab.com/emmeline/emmeline"
 depends: [
   "dune" {build & >= "1.2.1"}
   "base" {">=v0.11" & "<v0.12"}

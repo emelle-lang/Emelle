@@ -6,7 +6,7 @@
 
 open Core_kernel
 open Js_of_ocaml
-open Emelle
+open Emmeline
 
 type modul = {
     items : (symbols, items) Bexp.hole;

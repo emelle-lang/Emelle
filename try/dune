@@ -1,5 +1,5 @@
 (executable
   (name main)
-  (libraries base emelle js_of_ocaml js_of_ocaml-ppx)
+  (libraries base emmeline js_of_ocaml js_of_ocaml-ppx)
   (preprocess (pps js_of_ocaml-ppx))
   (js_of_ocaml (flags +dynlink.js +toplevel.js)))

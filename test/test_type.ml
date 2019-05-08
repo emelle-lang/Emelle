@@ -1,5 +1,5 @@
 open Base
-open Emelle
+open Emmeline
 
 let vargen = Type.create_vargen ()
 

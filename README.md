@@ -1,10 +1,10 @@
-# Emelle
+# Emmeline
 
-Emelle is a work-in-progress
+Emmeline is a work-in-progress
 [ML](https://en.wikipedia.org/wiki/ML_(programming_language)) dialect.
 
 **See the block-based editor at
-https://emelle.gitlab.io/emelle/editor/index.html.**
+https://emmeline.gitlab.io/emmeline/editor/index.html.**
 
 ## Building
 

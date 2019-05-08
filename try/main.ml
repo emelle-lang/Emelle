@@ -5,7 +5,7 @@
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
 open Base
 open Js_of_ocaml
-open Emelle
+open Emmeline
 
 let () =
   Dom_html.window##.onload :=

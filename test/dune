@@ -1,4 +1,4 @@
 (tests
   (names test_env test_integration test_syntax test_type test_typecheck)
-  (libraries base emelle stdio)
+  (libraries base emmeline stdio)
   (preprocess (pps ppx_jane)))

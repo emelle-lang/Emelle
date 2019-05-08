@@ -1,3 +1,3 @@
 (executable
   (name main)
-  (libraries base emelle stdio))
+  (libraries base emmeline stdio))

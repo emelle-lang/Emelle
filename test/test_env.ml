@@ -1,5 +1,5 @@
 open Base
-open Emelle
+open Emmeline
 
 let () =
   let env = Env.empty (module Int) in
