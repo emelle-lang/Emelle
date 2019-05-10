@@ -8,7 +8,11 @@ open Core_kernel
 open Js_of_ocaml
 open Emmeline
 
-type modul = {
+type ident =
+  | Local of Bexp.Widget.text_input
+  | Qual of Bexp.Widget.text_input * Bexp.Widget.text_input
+
+and modul = {
     items : (symbols, items) Bexp.hole;
   }
 
@@ -38,12 +42,12 @@ and expr =
   | ERef
   | ESeq of bin_expr
   | EUnit
-  | EVar of Bexp.Widget.text_input
+  | EVar of (symbols, ident) Bexp.hole
 
 and bin_expr = (symbols, expr) Bexp.hole * (symbols, expr) Bexp.hole
 
 and pat =
-  | PConstr of (Bexp.Widget.text_input * (symbols, pat_list) Bexp.hole)
+  | PConstr of ((symbols, ident) Bexp.hole * (symbols, pat_list) Bexp.hole)
   | PRef of (symbols, pat) Bexp.hole
   | PUnit
   | PVar of Bexp.Widget.text_input
@@ -59,6 +63,7 @@ and branch = {
   }
 
 and symbols =
+  | Ident of (symbols, ident) Bexp.term
   | Module of (symbols, modul) Bexp.term
   | Items of (symbols, items) Bexp.term
   | Let_def of (symbols, let_def) Bexp.term
@@ -69,6 +74,10 @@ and symbols =
   | Branch of (symbols, branch) Bexp.term
 
 let doc = Dom_svg.document
+
+let get_ident = function
+  | Ident i -> Some i
+  | _ -> None
 
 let get_module = function
   | Module m -> Some m
@@ -102,6 +111,8 @@ let get_branch = function
   | Branch a -> Some a
   | _ -> None
 
+let symbol_of_ident i = Ident i
+
 let symbol_of_modul m = Module m
 
 let symbol_of_expr t = Expr t
@@ -121,6 +132,10 @@ let symbol_of_branch b = Branch b
 let left (l, _) = l
 
 let right (_, r) = r
+
+let ident_data =
+  { Bexp.palette_name = "Identifier"
+  ; palette_color = "purple" }
 
 let module_data =
   { Bexp.palette_name = "Module"
@@ -161,6 +176,25 @@ let entry_hole = Bexp.Hole.create get_module module_data
 let ctx = Bexp.Workspace.create container entry_hole
 
 let id x = x
+
+let local_def =
+  let open Bexp.Syntax in
+  let input = Bexp.Widget.create_text_input "x" in
+  create [ widget input id ]
+    ~create:(fun () -> Bexp.Widget.create_text_input input#value)
+    ~to_term:(fun s -> Local s)
+    ~symbol_of_term:symbol_of_ident
+
+let qual_def =
+  let open Bexp.Syntax in
+  let input = Bexp.Widget.create_text_input "Prelude" in
+  let input2 = Bexp.Widget.create_text_input "x" in
+  create [widget input left; text "."; widget input2 right]
+    ~create:(fun () ->
+      ( Bexp.Widget.create_text_input input#value
+      , Bexp.Widget.create_text_input input2#value ))
+    ~to_term:(fun (l, r) -> Qual (l, r))
+    ~symbol_of_term:symbol_of_ident
 
 let module_def =
   let open Bexp.Syntax in
@@ -304,18 +338,16 @@ let eunit_def =
 
 let evar_def =
   let open Bexp.Syntax in
-  let input = Bexp.Widget.create_text_input "x" in
-  create [ widget input id ]
-    ~create:(fun () -> Bexp.Widget.create_text_input input#value)
+  create [ nt id ident_data ]
+    ~create:(fun () -> Bexp.Hole.create get_ident ident_data)
     ~to_term:(fun input -> EVar input)
     ~symbol_of_term:symbol_of_expr
 
 let pconstr_def =
   let open Bexp.Syntax in
-  let input = Bexp.Widget.create_text_input "Constr" in
-  create [ widget input left; nt right pat_list_data ]
+  create [ nt left ident_data; text "("; nt right pat_list_data; text ")" ]
     ~create:(fun () ->
-      ( Bexp.Widget.create_text_input input#value
+      ( Bexp.Hole.create get_ident ident_data
       , Bexp.Hole.create get_pat_list pat_list_data ))
     ~to_term:(fun x -> PConstr x)
     ~symbol_of_term:symbol_of_pat
@@ -351,7 +383,7 @@ let pwild_def =
 
 let plist_cons_def =
   let open Bexp.Syntax in
-  create [nt left pat_data; text ","; nt right pat_list_data]
+  create [nt left pat_data; tab; nt right pat_list_data]
     ~create:(fun () ->
       ( Bexp.Hole.create get_pat pat_data
       , Bexp.Hole.create get_pat_list pat_list_data ))
@@ -424,105 +456,160 @@ let module_palette =
   Bexp.Palette.create ctx (Some (Palette items_palette))
     module_data [ Bexp.Syntax module_def ]
 
-let rec compile_pattern hole =
+let ident_palette =
+  Bexp.Palette.create ctx (Some (Palette module_palette))
+    ident_data [ Bexp.Syntax local_def; Bexp.Syntax qual_def ]
+
+let compile_ident hole =
   Bexp.Hole.clear_error hole;
-  let node = match hole.Bexp.hole_term with
-    | None -> Ast.Wild
+  match hole.Bexp.hole_term with
+  | None -> Error (Bexp.Hole hole, "Missing")
+  | Some term ->
+     match term.Bexp.term with
+     | Local input -> Ok (Ast.Internal input#value)
+     | Qual(l, r) -> Ok (Ast.External (l#value, r#value))
+
+let rec compile_pattern hole =
+  let open Result.Let_syntax in
+  Bexp.Hole.clear_error hole;
+  let%map node = match hole.Bexp.hole_term with
+    | None -> Ok Ast.Wild
     | Some term ->
        match term.Bexp.term with
-       | PWild -> Ast.Wild
-       | PUnit -> Ast.Unit
-       | PVar input -> Ast.Var (input#value)
-       | PRef pat -> Ast.Deref (compile_pattern pat)
-       | PConstr(constr, pats) ->
-          Ast.Con(Ast.Internal constr#value, compile_patterns pats)
+       | PWild -> Ok Ast.Wild
+       | PUnit -> Ok Ast.Unit
+       | PVar input -> Ok (Ast.Var (input#value))
+       | PRef pat ->
+          let%map pat = compile_pattern pat in
+          Ast.Deref pat
+       | PConstr(id, pats) ->
+          let%bind id = compile_ident id in
+          let%map pats = compile_patterns pats in
+          Ast.Con(id, pats)
   in { Ast.pat_ann = Bexp.Hole hole; pat_node = node }
 
 and compile_patterns hole =
+  let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
-  | None -> []
+  | None -> Ok []
   | Some { Bexp.term = PList(p, ps); _ }->
-     compile_pattern p :: compile_patterns ps
+     let%bind p = compile_pattern p in
+     let%map ps = compile_patterns ps in
+     p::ps
 
 let rec compile_branch hole =
+  let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
-  | None -> []
+  | None -> Ok []
   | Some term ->
      let { branch_pat = pat
          ; branch_expr = expr
          ; branch_next = next } = term.Bexp.term
-     in (compile_pattern pat, compile_expr expr) :: compile_branch next
+     in
+     let%bind pat = compile_pattern pat in
+     let%bind expr = compile_expr expr in
+     let%map next = compile_branch next in
+     (pat, expr)::next
 
 and compile_expr hole =
+  let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
-  let node = match hole.Bexp.hole_term with
-    | None -> Ast.Typed_hole
+  let%map node = match hole.Bexp.hole_term with
+    | None -> Ok Ast.Typed_hole
     | Some term ->
        match term.Bexp.term with
-       | EApp(f, x) -> Ast.App(compile_expr f, compile_expr x)
-       | EAssign(l, r) -> Ast.Assign(compile_expr l, compile_expr r)
+       | EApp(f, x) ->
+          let%bind f = compile_expr f in
+          let%map x = compile_expr x in
+          Ast.App(f, x)
+       | EAssign(l, r) ->
+          let%bind l = compile_expr l in
+          let%map r = compile_expr r in
+          Ast.Assign(l, r)
        | ECase(scrut, branches) ->
-          Ast.Case(compile_expr scrut, compile_branch branches)
+          let%bind scrut = compile_expr scrut in
+          let%map branches = compile_branch branches in
+          Ast.Case(scrut, branches)
        | ELam(pat, body) ->
-          Ast.Lam((compile_pattern pat, [], compile_expr body), [])
+          let%bind pat = compile_pattern pat in
+          let%map body = compile_expr body in
+          Ast.Lam((pat, [], body), [])
        | ELet(defs, body) ->
-          Ast.Let(compile_let_def defs, compile_expr body)
+          let%bind defs = compile_let_def defs in
+          let%map body = compile_expr body in
+          (Ast.Let(defs, body) : _ Ast.expr')
        | ELet_rec(defs, body) ->
-          Ast.Let_rec(compile_let_rec defs, compile_expr body)
-       | ERef -> Ast.Ref
-       | ESeq(f, s) -> Ast.Seq(compile_expr f, compile_expr s)
-       | EUnit -> Ast.Lit Literal.Unit
-       | EVar input -> Ast.Var (Ast.Internal input#value)
+          let%bind defs = compile_let_rec defs in
+          let%map body = compile_expr body in
+          (Ast.Let_rec(defs, body) : _ Ast.expr')
+       | ERef -> Ok Ast.Ref
+       | ESeq(f, s) ->
+          let%bind f = compile_expr f in
+          let%map s = compile_expr s in
+          Ast.Seq(f, s)
+       | EUnit -> Ok (Ast.Lit Literal.Unit)
+       | EVar ident ->
+          let%map ident = compile_ident ident in
+          Ast.Var ident
   in { Ast.expr_ann = Bexp.Hole hole; expr_node = node }
 
 and compile_let_def hole =
+  let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
-  | None -> []
+  | None -> Ok []
   | Some term ->
      let { let_pat = pat
          ; let_expr = expr
          ; let_next = next } = term.Bexp.term in
-     { Ast.let_ann = Bexp.Hole hole
-     ; let_lhs = compile_pattern pat
-     ; let_rhs = compile_expr expr } :: compile_let_def next
+     let%bind pat = compile_pattern pat in
+     let%bind expr = compile_expr expr in
+     let%map next = compile_let_def next in
+     { Ast.let_ann = Bexp.Hole hole; let_lhs = pat; let_rhs = expr } :: next
 
 and compile_let_rec hole =
+  let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
-  | None -> []
+  | None -> Ok []
   | Some term ->
      let { let_rec_ident = ident
          ; let_rec_expr = expr
          ; let_rec_next = next } = term.Bexp.term in
+     let%bind expr = compile_expr expr in
+     let%map next = compile_let_rec next in
      { Ast.rec_ann = Bexp.Hole hole
-     ; rec_lhs = ident#value
-     ; rec_rhs = compile_expr expr } :: compile_let_rec next
+     ; rec_lhs = ident#value; rec_rhs = expr } :: next
 
 let rec compile_items hole =
+  let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
-  | None -> []
+  | None -> Ok []
   | Some term ->
-     let node, next = match term.Bexp.term with
+     let%bind node, next = match term.Bexp.term with
        | ILet(defs, next) ->
-          Ast.Let (compile_let_def defs), next
+          let%map defs = compile_let_def defs in
+          Ast.Let defs, next
        | ILet_rec(defs, next) ->
-          Ast.Let_rec (compile_let_rec defs), next
+          let%map defs = compile_let_rec defs in
+          Ast.Let_rec defs, next
      in
-     { Ast.item_ann = Bexp.Hole hole; item_node = node } :: compile_items next
+     let%map next = compile_items next in
+     { Ast.item_ann = Bexp.Hole hole; item_node = node }::next
 
 let compile_module hole =
+  let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
-  | None -> None
+  | None -> Error (Bexp.Hole hole, "No module")
   | Some modl ->
-     Some
-       { Ast.file_ann = Bexp.Hole hole
-       ; file_exports = []
-       ; file_items = compile_items modl.Bexp.term.items }
+     let%map items = compile_items modl.Bexp.term.items in
+     { Ast.file_ann = Bexp.Hole hole
+     ; file_exports = []
+     ; file_items = items }
 
 let typecheck_button =
   match
@@ -537,19 +624,25 @@ let console = Dom_html.getElementById "console"
 let set_console_text str =
   console##.textContent := Js.some (Js.string str)
 
+let error_message =
+  "There are errors in the program! Click the highlighted " ^
+  "blocks to see the error message."
+
 let () =
   typecheck_button##.onclick :=
     Dom.handler (fun _ ->
         begin match compile_module entry_hole with
-        | None -> ()
-        | Some modl ->
+        | Error (Bexp.Hole hole, error) ->
+           Bexp.Hole.set_error hole (fun () -> set_console_text error);
+           set_console_text error_message
+        | Ok modl ->
            match
              let packages = Hashtbl.create (module String) in
              let compiler = Pipeline.create "main" packages in
              let env = Env.empty (module String) in
              Pipeline.compile_frontend compiler env modl
            with
-           | Ok _ -> Caml.print_endline "Ok!"
+           | Ok _ -> set_console_text ""
            | Error e ->
               let rec f = function
                 | Message.And(fst, snd) ->
@@ -566,13 +659,11 @@ let () =
                    Caml.print_endline ("Unreachable " ^ str);
               in
               f e;
-              set_console_text
-                ("There are errors in the program! Click the highlighted " ^
-                 "blocks to see the error message.")
+              set_console_text error_message
         end;
         Js._false
       )
 
 let () =
-  Bexp.Toolbox.set_palette ctx.Bexp.toolbox module_palette;
+  Bexp.Toolbox.set_palette ctx.Bexp.toolbox ident_palette;
   Bexp.Workspace.render ctx

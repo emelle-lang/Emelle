@@ -1,4 +1,4 @@
 (executable
   (name main)
   (libraries bexp core_kernel emmeline)
-  (preprocess (pps js_of_ocaml-ppx)))
+  (preprocess (pps js_of_ocaml-ppx ppx_jane)))
