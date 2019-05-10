@@ -258,7 +258,23 @@ and operand_of_typedtree self typedtree ~cont =
      cont (Ir.Operand.Register var) >>| fun body ->
      { Anf.ann = typedtree.Typedtree.ann
      ; instr = Anf.Let(var, Anf.Fun proc, body) }
-  | Typedtree.Extern_var id -> cont (Ir.Operand.Extern_var id)
+  | Typedtree.Extern_var(pkg, offset) ->
+     let package = fresh_register self in
+     let var = fresh_register self in
+     cont (Ir.Operand.Register var) >>| fun body ->
+     { Anf.ann = typedtree.Typedtree.ann
+     ; instr =
+         Anf.Let
+           ( package
+           , Anf.Package pkg
+           , { Anf.ann = typedtree.Typedtree.ann
+             ; instr =
+                 Anf.Let
+                   ( var
+                   , Anf.Get(Ir.Operand.Register package, offset)
+                   , body)
+           } )
+     }
   | Typedtree.Lit lit -> cont (Ir.Operand.Lit lit)
   | Typedtree.Local_var id ->
      Message.at typedtree.Typedtree.ann (free_var self id)

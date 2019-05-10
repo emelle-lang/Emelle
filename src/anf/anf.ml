@@ -32,7 +32,9 @@ type 'a opcode =
   | Case of decision_tree * 'a join_point list
     (** decision tree, jump table *)
   | Fun of 'a proc
+  | Get of operand * int
   | Load of operand
+  | Package of string
   | Prim of string
   | Ref of operand
 

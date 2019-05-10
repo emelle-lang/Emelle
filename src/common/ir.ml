@@ -45,7 +45,6 @@ end
 
 module Operand = struct
   type t =
-    | Extern_var of Path.t
     | Lit of Literal.t
     | Register of Register.t
 end

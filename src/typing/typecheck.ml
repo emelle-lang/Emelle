@@ -435,10 +435,10 @@ let rec infer_term checker Term.{ term; ann } =
         ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
         ; expr = Typedtree.Constr(idx, List.length product) }
 
-  | Term.Extern_var(id, ty) ->
+  | Term.Extern_var(pkg_name, offset, ty) ->
      Ok { Typedtree.ann
         ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
-        ; expr = Typedtree.Extern_var id }
+        ; expr = Typedtree.Extern_var(pkg_name, offset) }
 
   | Term.Lam(id, body) ->
      in_new_lam_level (fun checker ->

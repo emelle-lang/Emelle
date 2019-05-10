@@ -24,6 +24,7 @@ type instr =
   | Deref of register * operand
   | Get of register * operand * int
   | Load of register * operand
+  | Package of register * string
   | Prim of register * string
   | Ref of register * operand
   | Set_field of operand * int * operand

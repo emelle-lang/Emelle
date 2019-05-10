@@ -49,11 +49,13 @@ type frame = {
   }
 
 type t = {
-    foreign_values : (string, value) Hashtbl.t
+    foreign_values : (string, value) Hashtbl.t;
+    eval'd_packages : (string, value) Hashtbl.t;
   }
 
-let create io =
-  { foreign_values =
+let create io rt =
+  { eval'd_packages = rt
+  ; foreign_values =
       Hashtbl.of_alist_exn
         (module String)
         [ "putc"
@@ -76,7 +78,6 @@ let create io =
                   | _ -> failwith "Type error" } ] }
 
 let eval_operand frame = function
-  | Asm.Extern_var _ -> failwith "unimplemented"
   | Asm.Lit (Literal.Char c) -> Char c
   | Asm.Lit (Literal.Float f) -> Float f
   | Asm.Lit (Literal.Int i) -> Int i
@@ -128,6 +129,9 @@ let rec eval_instr t file frame =
      bump_ip frame
   | Asm.Move(dest, data) ->
      frame.data.(dest) <- eval_operand frame data;
+     bump_ip frame
+  | Asm.Package(dest, key) ->
+     frame.data.(dest) <- Hashtbl.find_exn t.eval'd_packages key;
      bump_ip frame
   | Asm.Ref(dest, data) ->
      frame.data.(dest) <- Ref (ref (eval_operand frame data));
@@ -182,8 +186,7 @@ and apply_function t file value args =
           Emelle_proc proc, proc.Asm.frame_size, data, proc.Asm.params, []
        | _ -> failwith "Expected function pointer"
        end
-    | Foreign { params; f; arity } ->
-       OCaml_proc f, arity, [||], params, []
+    | Foreign { params; f; arity } -> OCaml_proc f, arity, [||], params, []
     | Partial_app { proc
                   ; frame_size
                   ; closure

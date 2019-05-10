@@ -12,7 +12,7 @@ type ('ann, 'fix) term =
   | Assign of 'fix * 'fix
   | Case of 'fix list * ('ann, 'fix) branch list
   | Constr of Type.adt * int
-  | Extern_var of Path.t * Type.t
+  | Extern_var of string * int * Type.t
   | Lam of Ident.t * 'fix
   | Let of Ident.t * 'fix * 'fix
   | Let_rec of ('ann, 'fix) bind_group * 'fix

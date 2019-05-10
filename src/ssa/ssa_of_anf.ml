@@ -168,8 +168,14 @@ let rec compile_opcode ctx dest anf ~cont
           , Ir.function_tag
           , (Ir.Operand.Lit (Literal.Int idx))::env ));
      cont ctx
+  | Anf.Get(operand, offset) ->
+     Queue.enqueue ctx.instrs (Ssa.Get(dest, operand, offset));
+     cont ctx
   | Anf.Load o ->
      Queue.enqueue ctx.instrs (Ssa.Load(dest, o));
+     cont ctx
+  | Anf.Package str ->
+     Queue.enqueue ctx.instrs (Ssa.Package(dest, str));
      cont ctx
   | Anf.Prim p ->
      Queue.enqueue ctx.instrs (Ssa.Prim(dest, p));

@@ -13,6 +13,7 @@ let operands_of_opcode = function
   | Ssa.Deref(dest, op) -> Some dest, [op]
   | Ssa.Get(dest, op, _) -> Some dest, [op]
   | Ssa.Load(dest, op) -> Some dest, [op]
+  | Ssa.Package(dest, _) -> Some dest, []
   | Ssa.Prim(dest, _) -> Some dest, []
   | Ssa.Ref(dest, op) -> Some dest, [op]
   | Ssa.Set_field(dest, _, op) -> None, [dest; op]

@@ -35,6 +35,7 @@ and expr =
   | ELam of ((symbols, pat) Bexp.hole * (symbols, expr) Bexp.hole)
   | ELet of ((symbols, let_def) Bexp.hole * (symbols, expr) Bexp.hole)
   | ELet_rec of ((symbols, let_rec) Bexp.hole * (symbols, expr) Bexp.hole)
+  | ERef
   | ESeq of bin_expr
   | EUnit
   | EVar of Bexp.Widget.text_input
@@ -240,7 +241,8 @@ let eassn_def =
 let ecase_def =
   let open Bexp.Syntax in
   create
-    [ text "case"; nt left expr_data; text "of"; newline; nt right branch_data ]
+    [ text "case"; nt left expr_data; text "of"; newline
+    ; tab; nt right branch_data ]
     ~create:(fun () ->
       ( Bexp.Hole.create get_expr expr_data
       , Bexp.Hole.create get_branch branch_data ))
@@ -275,6 +277,13 @@ let elet_rec_def =
       ( Bexp.Hole.create get_let_rec let_rec_data
       , Bexp.Hole.create get_expr expr_data ))
     ~to_term:(fun args -> ELet_rec args)
+    ~symbol_of_term:symbol_of_expr
+
+let eref_def =
+  let open Bexp.Syntax in
+  create [ text "ref" ]
+    ~create:(fun () -> ())
+    ~to_term:(fun () -> ERef)
     ~symbol_of_term:symbol_of_expr
 
 let eseq_def =
@@ -394,6 +403,7 @@ let expr_palette =
     ; Bexp.Syntax elam_def
     ; Bexp.Syntax elet_def
     ; Bexp.Syntax elet_rec_def
+    ; Bexp.Syntax eref_def
     ; Bexp.Syntax eseq_def
     ; Bexp.Syntax eunit_def
     ; Bexp.Syntax evar_def ]
@@ -461,6 +471,7 @@ and compile_expr hole =
           Ast.Let(compile_let_def defs, compile_expr body)
        | ELet_rec(defs, body) ->
           Ast.Let_rec(compile_let_rec defs, compile_expr body)
+       | ERef -> Ast.Ref
        | ESeq(f, s) -> Ast.Seq(compile_expr f, compile_expr s)
        | EUnit -> Ast.Lit Literal.Unit
        | EVar input -> Ast.Var (Ast.Internal input#value)

@@ -9,7 +9,6 @@
 open Base
 
 let compile_operand coloring = function
-  | Ir.Operand.Extern_var path -> Ok (Asm.Extern_var path)
   | Ir.Operand.Lit lit -> Ok (Asm.Lit lit)
   | Ir.Operand.Register reg ->
      match Hashtbl.find coloring.Color.map reg with
@@ -67,6 +66,10 @@ let compile_instr coloring opcode =
      find_color coloring dest (fun dest ->
          let%map operand = compile_operand coloring operand in
          Asm.Move(dest, operand)
+       )
+  | Ssa.Package(dest, str) ->
+     find_color coloring dest (fun dest ->
+         Ok (Asm.Package(dest, str))
        )
   | Ssa.Prim(dest, str) ->
      find_color coloring dest (fun dest ->

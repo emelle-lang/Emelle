@@ -189,8 +189,6 @@ module Ssa = struct
     Buffer.add_string pp.buffer (Ir.Register.to_string reg)
 
   let print_operand pp = function
-    | Ir.Operand.Extern_var path ->
-       print_qual_id pp path
     | Ir.Operand.Lit lit ->
        print_lit pp lit
     | Ir.Operand.Register id ->
@@ -267,6 +265,10 @@ module Ssa = struct
        print_assn pp dest;
        Buffer.add_string pp.buffer "load ";
        print_operand pp op
+    | Ssa.Package(dest, str) ->
+       print_assn pp dest;
+       Buffer.add_string pp.buffer "package ";
+       Buffer.add_string pp.buffer (String.escaped str)
     | Ssa.Prim(dest, str) ->
        print_assn pp dest;
        Buffer.add_string pp.buffer "prim ";
@@ -342,7 +344,6 @@ module Asm = struct
     Buffer.add_string pp.buffer @@ "%"^(Int.to_string addr)
 
   let print_operand pp = function
-    | Asm.Extern_var path -> print_qual_id pp path
     | Asm.Lit lit -> print_lit pp lit
     | Asm.Stack addr -> print_addr pp addr
 
@@ -384,6 +385,11 @@ module Asm = struct
        Buffer.add_string pp.buffer @@ Int.to_string idx
     | Asm.Move(dest, src) ->
        print_instr_args pp "move" dest [src]
+    | Asm.Package(dest, str) ->
+       Buffer.add_string pp.buffer "package ";
+       print_addr pp dest;
+       Buffer.add_char pp.buffer ' ';
+       Buffer.add_string pp.buffer (String.escaped str)
     | Asm.Prim(dest, primop) ->
        Buffer.add_string pp.buffer "prim ";
        print_addr pp dest;

@@ -213,7 +213,8 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
           end
        | Ast.External _ -> (* Qualified name *)
           match find Package.find_val st qual_id with
-          | Some (path, (ty, _)) -> Ok (Term.Extern_var(path, ty))
+          | Some ((pkg_name, _), (ty, offset)) ->
+             Ok (Term.Extern_var(pkg_name, offset, ty))
           | None -> Message.error ann (Message.Unresolved_path qual_id)
 
   in term >>| fun term -> { Term.ann = ann; term = term }

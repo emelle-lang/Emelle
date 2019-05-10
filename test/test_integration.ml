@@ -288,7 +288,7 @@ let tests =
      |}
   ; {|let puts = foreign "puts" forall a . a -> Unit
 
-      let () = puts "Hello world!"
+      let () = puts "Hello world!\n"
      |}
   ; {|type IntPair = Pair Int * Int
 
@@ -300,17 +300,48 @@ let tests =
       type Foo = Foo Product Int String
 
       let Pair i s = Pair 2 "foobar"
+     |}
+  ; {|let () = Prelude.puts "Hi"
      |} ]
+
+let create_std () =
+  let std = Hashtbl.create (module String) in
+  let rt = Hashtbl.create (module String) in
+
+  let prelude_ct, prelude_rt  =
+    let code =
+      {|
+export (id, const, puts)
+
+let id = fun x -> x
+
+let const = fun x _ -> x
+
+let puts = foreign "puts" forall a . a -> Unit
+       |}
+    in
+    match
+      Parser.file Lexer.expr (Lexing.from_string code)
+      |> Pipeline.compile (Hashtbl.create (module String)) "Prelude"
+    with
+    | Ok(package, compiled) ->
+       package, Eval.eval (Eval.create Io.stdio rt) compiled
+    | Error _ -> assert false
+  in
+  Hashtbl.add_exn std ~key:"Prelude" ~data:prelude_ct;
+  Hashtbl.add_exn rt ~key:"Prelude" ~data:prelude_rt;
+  std, rt
 
 let () =
   List.iter ~f:(fun test ->
+      let std, rt = create_std () in
       match
         Parser.file Lexer.expr (Lexing.from_string test)
-        |> Pipeline.compile (Hashtbl.create (module String)) "main"
+        |> Pipeline.compile std "main"
       with
       | Ok (_, file) ->
          begin
-           let ctx = Eval.create Io.stdio in
+           let ctx = Eval.create Io.stdio rt in
            try ignore (Eval.eval ctx file) with
            | _ ->
               let pp = Prettyprint.create () in

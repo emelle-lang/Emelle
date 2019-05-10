@@ -44,7 +44,7 @@ let () =
               with
               | Ok (_, asm_module) ->
                  Caml.print_endline "OK!";
-                 let ctx = Eval.create io in
+                 let ctx = Eval.create io (Hashtbl.create (module String)) in
                  ignore (Eval.eval ctx asm_module)
               | Error errs ->
                  Caml.print_endline "ERROR!";
