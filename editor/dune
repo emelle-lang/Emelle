@@ -1,4 +1,9 @@
+(rule
+  (targets main.ml)
+  (action (run ../bexp/dsl/bexp_dsl.exe grammar -o main.ml))
+  (deps grammar (package bexp)))
+
 (executable
   (name main)
   (libraries bexp core_kernel emmeline)
-  (preprocess (pps js_of_ocaml-ppx ppx_jane)))
+  (preprocess (pps js_of_ocaml-ppx ppx_jane bexp.ppx_symbol)))

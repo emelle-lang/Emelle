@@ -23,13 +23,13 @@ body {
   padding: 0.5rem 1rem;
 }
 
-#typecheck {
+#run {
   background-color: #00b000;
   border-radius: 5px;
   color: white;
 }
 
-#typecheck:active {
+#run:active {
   background-color: #00d000;
 }
 
