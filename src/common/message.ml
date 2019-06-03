@@ -25,7 +25,9 @@ type error =
   | Unknown_constr of Qual_id.t * string
   | Unreachable_error of string
   | Unresolved_id of Qual_id.t
+  | Unresolved_name of string
   | Unresolved_path of Ast.qual_id
+  | Unresolved_prefix of Qual_id.Prefix.t
   | Unresolved_type of Qual_id.t
   | Unresolved_typevar of string
   | Unsafe_let_rec

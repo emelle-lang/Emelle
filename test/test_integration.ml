@@ -302,11 +302,15 @@ let tests =
       type Foo = Foo Product Int String
 
       let Pair i s = Pair 2 "foobar"
+     |}
+  ; {|import "std" Prelude as P
+
+      let () = P.puts "Hello world!\n"
      |} ]
 
 let std_prelude_prefix =
   { Qual_id.Prefix.package = "std"
-  ; path = ["prelude"] }
+  ; path = ["Prelude"] }
 
 let create_std () =
   let std = Hashtbl.create (module Qual_id.Prefix) in

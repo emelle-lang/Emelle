@@ -72,7 +72,7 @@ let exports :=
 let import :=
   | IMPORT;
     package = STRING_LIT;
-    path = nonempty_list(UIDENT);
+    path = separated_nonempty_list(DOT, UIDENT);
     alias = option(AS; id = UIDENT; { id } );
       { { Ast.package; path; alias } }
 

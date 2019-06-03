@@ -7,27 +7,32 @@ open Base
 
 type t =
   { vargen : Ident.gen
+  ; aliases : (string, Qual_id.Prefix.t) Hashtbl.t
   ; packages : (Qual_id.Prefix.t, Package.t) Hashtbl.t
   ; package : Package.t }
 
 let create package packages =
   { vargen = Ident.create_gen ()
+  ; aliases = Hashtbl.create (module String)
   ; package
   ; packages }
 
-let find f st = function
+let find f error st = function
   | Ast.Internal name ->
      begin match f st.package name with
-     | None -> None
-     | Some x -> Some ({ Qual_id.prefix = st.package.Package.prefix; name }, x)
+     | None -> Error (Message.Unresolved_name name)
+     | Some x -> Ok ({ Qual_id.prefix = st.package.Package.prefix; name }, x)
      end
-  | Ast.External(_pack_name, _item_name) -> failwith "unimplemented"
-     (*match Hashtbl.find st.packages pack_name with
-     | None -> None
-     | Some package ->
-        match f package item_name with
-        | None -> None
-        | Some _ -> failwith "Unimplemented"*)
+  | Ast.External(mod_alias, name) ->
+     match Hashtbl.find st.aliases mod_alias with
+     | None -> Error (Message.Unresolved_name name)
+     | Some prefix ->
+        match Hashtbl.find st.packages prefix with
+        | None -> Error (Message.Unresolved_prefix prefix)
+        | Some package ->
+           match f package name with
+           | None -> Error (error name)
+           | Some x -> Ok ({ Qual_id.prefix; name }, x)
 
 let fresh_ident st name = Ident.fresh st.vargen name
 
@@ -35,18 +40,20 @@ let fresh_ident st name = Ident.fresh st.vargen name
     [Ast.pattern] to [Term.ml] while collecting bound identifiers in [map],
     returning [Error] if a data constructor or type isn't defined. *)
 let rec pattern_of_ast_pattern st map id_opt ast_pat =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   match ast_pat.Ast.pat_node with
   | Ast.Con(constr_path, pats) ->
      let f next acc =
        acc >>= fun (pats, map) ->
        pattern_of_ast_pattern st map None next >>| fun (pat, map) ->
-       (pat::pats, map)
+       (pat :: pats, map)
      in
-     begin match find Package.find_adt st constr_path with
-     | None ->
-        Message.error ast_pat.Ast.pat_ann (Message.Unresolved_path constr_path)
-     | Some (_, (adt, idx)) ->
+     begin match
+       find Package.find_adt
+         (fun name -> Message.Unresolved_name name) st constr_path
+     with
+     | Error e -> Message.error ast_pat.Ast.pat_ann e
+     | Ok (_, (adt, idx)) ->
         List.fold_right ~f:f ~init:(Ok ([], map)) pats >>| fun (pats, map) ->
         ( { Pattern.ann = ast_pat.Ast.pat_ann
           ; node = Con(adt, idx, pats)
@@ -83,8 +90,8 @@ let rec pattern_of_ast_pattern st map id_opt ast_pat =
      Ok ({ Pattern.ann = ast_pat.Ast.pat_ann; node = Wild; id = id_opt }, map)
 
 let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
-  let open Result.Monad_infix in
-  let term =
+  let open Result.Let_syntax in
+  let%map term =
     match node with
     | Ast.App(f, x) ->
        begin match term_of_expr st env f, term_of_expr st env x with
@@ -94,40 +101,45 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
        end
 
     | Ast.Assign(lval, rval) ->
-       term_of_expr st env lval >>= fun lval ->
-       term_of_expr st env rval >>| fun rval ->
+       let%bind lval = term_of_expr st env lval in
+       let%map rval = term_of_expr st env rval in
        Term.Assign(lval, rval)
 
     | Ast.Case(scrutinee, cases) ->
-       term_of_expr st env scrutinee >>= fun scrutinee ->
-       List.fold_right ~f:(fun (pat, expr) acc ->
-           acc >>= fun cases ->
-           let map = Map.empty (module String) in
-           pattern_of_ast_pattern st map None pat >>= fun (pat, map) ->
-           Env.in_scope_with (fun env ->
-               term_of_expr st env expr
-             ) map env
-           >>| fun body ->
-           let ids =
-             Map.fold ~f:(fun ~key:_ ~data:id set ->
-                 Set.add set id
-               ) ~init:(Set.empty (module Ident)) map
-           in
-           ([pat], ids, body)::cases
-         ) ~init:(Ok []) cases >>| fun cases ->
-       Term.Case([scrutinee], cases)
+       let%bind scrutinee = term_of_expr st env scrutinee in
+       let%map cases =
+         List.fold_right ~f:(fun (pat, expr) acc ->
+             let%bind cases = acc in
+             let map = Map.empty (module String) in
+             let%bind pat, map = pattern_of_ast_pattern st map None pat in
+             let%map body =
+               Env.in_scope_with (fun env ->
+                   term_of_expr st env expr
+                 ) map env
+             in
+             let ids =
+               Map.fold ~f:(fun ~key:_ ~data:id set ->
+                   Set.add set id
+                 ) ~init:(Set.empty (module Ident)) map
+             in
+             ([pat], ids, body) :: cases
+           ) ~init:(Ok []) cases
+       in Term.Case([scrutinee], cases)
 
     | Ast.Constr path ->
        begin match path with
        | Ast.Internal name ->
           begin match Package.find_adt st.package name with
           | Some (adt, idx) -> Ok (Term.Constr(adt, idx))
-          | None -> Message.error ann (Message.Unresolved_path path)
+          | None -> Message.error ann (Message.Unresolved_name name)
           end
        | Ast.External _ ->
-          match find Package.find_adt st path with
-          | Some (_, (adt, idx)) -> Ok (Term.Constr(adt, idx))
-          | None -> Message.error ann (Message.Unresolved_path path)
+          match
+            find Package.find_adt
+              (fun name -> Message.Unresolved_name name) st path
+          with
+          | Ok (_, (adt, idx)) -> Ok (Term.Constr(adt, idx))
+          | Error e -> Message.error ann e
        end
 
     | Ast.Lam((_, patterns, _) as case, cases) ->
@@ -136,35 +148,42 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
        let handle_branch (pat, pats, expr) =
          let map = Map.empty (module String) in
          pattern_of_ast_pattern st map None pat >>= fun (pat, map) ->
-         List.fold_right ~f:(fun pat acc ->
-             acc >>= fun (list, map) ->
-             pattern_of_ast_pattern st map None pat >>| fun (pat, map) ->
-             (pat::list, map)
-           ) ~init:(Ok ([], map)) pats >>= fun (pats, map) ->
-         Env.in_scope_with (fun env ->
-             term_of_expr st env expr
-           ) map env >>| fun term ->
+         let%bind pats, map =
+           List.fold_right ~f:(fun pat acc ->
+               let%bind list, map = acc in
+               let%map pat, map = pattern_of_ast_pattern st map None pat in
+               (pat :: list, map)
+             ) ~init:(Ok ([], map)) pats
+         in
+         let%map term =
+           Env.in_scope_with (fun env ->
+               term_of_expr st env expr
+             ) map env
+         in
          let ids =
            Map.fold ~f:(fun ~key:_ ~data:id acc ->
                Set.add acc id
              ) ~init:(Set.empty (module Ident)) map
-         in (pat::pats, ids, term)
+         in (pat :: pats, ids, term)
        in
-       List.fold_right ~f:(fun branch acc ->
-           acc >>= fun rows ->
-           handle_branch branch >>| fun row ->
-           row::rows
-         ) ~init:(Ok []) (case::cases) >>| fun cases ->
+       let%map cases =
+         List.fold_right ~f:(fun branch acc ->
+             let%bind rows = acc in
+             let%map row = handle_branch branch in
+             row :: rows
+           ) ~init:(Ok []) (case :: cases)
+       in
        let case_term =
          { Term.ann
          ; term =
              let f x = { Term.ann; term = Term.Var x} in
-             Case(List.map ~f (id::ids), cases) }
+             Case(List.map ~f (id :: ids), cases) }
        in
-       List.fold_right ~f:(fun id body ->
-           { Term.ann; term = Lam(id, body) }
-         ) ~init:case_term ids
-       |> fun body -> Term.Lam(id, body)
+       let body =
+         List.fold_right ~f:(fun id body ->
+             { Term.ann; term = Lam(id, body) }
+           ) ~init:case_term ids
+       in Term.Lam(id, body)
 
     | Ast.Let(bindings, body) ->
        (* Transform
@@ -178,15 +197,15 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
 
               case e1, e2, ... eN with
               | p1, p2, ... pN -> body *)
-       desugar_let_bindings st env bindings
-       >>= fun (map, scruts, ids, pats) ->
-       Env.in_scope_with (fun env -> term_of_expr st env body) map env
-       >>| fun body -> Term.Case(scruts, [pats, ids, body])
+       let%bind map, scruts, ids, pats = desugar_let_bindings st env bindings in
+       let%map body =
+         Env.in_scope_with (fun env -> term_of_expr st env body) map env
+       in Term.Case(scruts, [pats, ids, body])
 
     | Ast.Let_rec(bindings, body) ->
        Env.in_scope (fun env ->
-           desugar_rec_bindings st env bindings >>= fun (env, bindings) ->
-           term_of_expr st env body >>| fun body ->
+           let%bind env, bindings = desugar_rec_bindings st env bindings in
+           let%map body = term_of_expr st env body in
            Term.Let_rec(bindings, body)
          ) env
 
@@ -197,8 +216,8 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
     | Ast.Ref -> Ok Term.Ref
 
     | Ast.Seq(s, t) ->
-       term_of_expr st env s >>= fun s ->
-       term_of_expr st env t >>| fun t ->
+       let%bind s = term_of_expr st env s in
+       let%map t = term_of_expr st env t in
        Term.Seq(s, t)
 
     | Ast.Typed_hole -> Ok (Term.Typed_hole env)
@@ -209,120 +228,135 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
           begin match Env.find env name with
           (* Found in the local environment *)
           | Some id -> Ok (Term.Var id)
-          | None -> Message.error ann (Message.Unresolved_path qual_id)
+          | None -> Message.error ann (Message.Unresolved_name name)
           end
        | Ast.External _ -> (* Qualified name *)
-          match find Package.find_val st qual_id with
-          | Some ({ Qual_id.prefix; _ }, (ty, offset)) ->
-             Ok (Term.Extern_var(prefix, offset, ty))
-          | None -> Message.error ann (Message.Unresolved_path qual_id)
+          match
+            find Package.find_val
+              (fun name -> Message.Unresolved_name name) st qual_id
+          with
+          | Ok ({ Qual_id.prefix; _ }, (ty, offset)) ->
+             Ok (Term.Extern_var (prefix, offset, ty))
+          | Error e -> Message.error ann e
 
-  in term >>| fun term -> { Term.ann = ann; term = term }
+  in { Term.ann = ann; term = term }
 
 and desugar_rec_bindings self env bindings =
-  let open Result.Monad_infix in
-  List.fold_right
-    ~f:(fun { Ast.rec_lhs = str; rec_rhs = expr; rec_ann = ann } acc ->
-      acc >>= fun (env, list) ->
-      let id = fresh_ident self (Some str) in
-      match Env.add env str id with
-      | Some env ->
-         Ok (env, (ann, id, expr)::list)
-      | None -> Message.error expr.Ast.expr_ann (Message.Redefined_name str)
-    ) ~init:(Ok (env, [])) bindings
-  >>= fun (env, bindings) ->
-  List.fold_right ~f:(fun (ann, id, expr) acc ->
-      acc >>= fun list ->
-      term_of_expr self env expr >>| fun term ->
-      { Term.rec_ann = ann; rec_lhs = id; rec_rhs = term }::list
-    ) ~init:(Ok []) bindings
-  >>| fun bindings -> (env, bindings)
+  let open Result.Let_syntax in
+  let%bind env, bindings =
+    List.fold_right
+      ~f:(fun { Ast.rec_lhs = str; rec_rhs = expr; rec_ann = ann } acc ->
+        let%bind env, list = acc in
+        let id = fresh_ident self (Some str) in
+        match Env.add env str id with
+        | Some env ->
+           Ok (env, (ann, id, expr) :: list)
+        | None -> Message.error expr.Ast.expr_ann (Message.Redefined_name str)
+      ) ~init:(Ok (env, [])) bindings
+  in
+  let%map bindings =
+    List.fold_right ~f:(fun (ann, id, expr) acc ->
+        let%bind list = acc in
+        let%map term = term_of_expr self env expr in
+        { Term.rec_ann = ann; rec_lhs = id; rec_rhs = term } :: list
+      ) ~init:(Ok []) bindings
+  in (env, bindings)
 
 and desugar_let_bindings self env bindings =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   let helper map { Ast.let_lhs = pat; let_rhs = expr; let_ann = _ann } =
-    pattern_of_ast_pattern self map None pat
-    >>= fun (pat, map) ->
-    term_of_expr self env expr
-    >>| fun term ->
+    let%bind pat, map = pattern_of_ast_pattern self map None pat in
+    let%map term = term_of_expr self env expr in
     (pat, term, map)
   in
   let map = Map.empty (module String) in
-  List.fold_right ~f:(fun binding acc ->
-      acc >>= fun (map, scruts, pats) ->
-      helper map binding >>| fun (pat, term, map) ->
-      (map, term::scruts, pat::pats)
-    ) ~init:(Ok (map, [], [])) bindings
-  >>| fun (map, scruts, pats) ->
+  let%map map, scruts, pats =
+    List.fold_right ~f:(fun binding acc ->
+        let%bind map, scruts, pats = acc in
+        let%map pat, term, map = helper map binding in
+        (map, term :: scruts, pat :: pats)
+      ) ~init:(Ok (map, [], [])) bindings
+  in
   let ids =
     Map.fold ~f:(fun ~key:_ ~data:id acc ->
         Set.add acc id
       ) ~init:(Set.empty (module Ident)) map
   in (map, scruts, ids, pats)
 
+let load_import t { Ast.package; path; alias } =
+  match alias with
+  | Some alias ->
+     let prefix = { Qual_id.Prefix.package; path } in
+     Hashtbl.set t.aliases ~key:alias ~data:prefix
+  | None -> ()
+
 let desugar typechecker env package packages ast_file =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   let t = create package packages in
-  List.fold ast_file.Ast.file_items ~init:(Ok (env, [])) ~f:(fun acc next ->
-      acc >>= fun (env, list) ->
-      match next.Ast.item_node with
-      | Ast.Let bindings ->
-         desugar_let_bindings t env bindings
-         >>= fun (map, scruts, ids, pats) ->
-         Map.fold map ~init:(Ok env) ~f:(fun ~key:key ~data:data acc ->
-             acc >>= fun env ->
-             match Env.add env key data with
-             | Some env -> Ok env
-             | None ->
-                Message.error next.Ast.item_ann (Message.Redefined_name key)
-           ) >>| fun env ->
-         ( env
-         , { Term.item_ann = next.Ast.item_ann
-           ; item_node = Term.Top_let(scruts, ids, pats) }::list )
-      | Ast.Let_rec bindings ->
-         desugar_rec_bindings t env bindings
-         >>| fun (env, bindings) ->
-         ( env
-         , { Term.item_ann = next.Ast.item_ann
-           ; item_node = Term.Top_let_rec bindings }::list )
-      | Ast.Type(adt, adts) ->
-         List.fold ~f:(fun acc adt ->
-             acc >>= fun () ->
-             let kvar = Kind.fresh_var typechecker.Typecheck.kvargen in
-             Message.at adt.Ast.adt_ann
-               (Package.add_typedef
-                  package adt.Ast.adt_name (Package.Todo (Kind.Var kvar)))
-           ) ~init:(Ok ()) (adt::adts) >>= fun () ->
-         List.fold ~f:(fun acc adt ->
-             acc >>= fun () ->
-             Typecheck.type_adt_of_ast_adt typechecker adt >>= fun adt' ->
-             match Package.find_typedef package adt'.Type.name with
-             | None ->
-                Message.error
-                  next.Ast.item_ann (Message.Unreachable_error "Typecheck ADT")
-             | Some ptr ->
-                match !ptr with
-                | Package.Compiled _ ->
-                   Message.error next.Ast.item_ann
-                     (Message.Redefined_name adt'.Type.name)
-                | Package.Todo kind ->
-                   Message.at adt.Ast.adt_ann
-                     (Typecheck.unify_kinds kind (Type.kind_of_adt adt'))
-                   >>= fun () ->
-                   Message.at adt.Ast.adt_ann
-                     (Package.add_datacons package adt')
-                   >>= fun () ->
-                   ptr := Package.Compiled (Type.Manifest adt');
-                   Ok ()
-                | Package.Prim _ ->
-                   Message.at adt.Ast.adt_ann
-                     (Package.add_datacons package adt')
-                   >>= fun () ->
-                   ptr := Package.Compiled (Type.Manifest adt');
-                   Ok ()
-           ) ~init:(Ok ()) (adt::adts) >>| fun () -> (env, list)
-    )
-  >>| fun (env, list) ->
+  List.iter ast_file.Ast.file_imports ~f:(load_import t);
+  let%map env, list =
+    List.fold ast_file.Ast.file_items ~init:(Ok (env, [])) ~f:(fun acc next ->
+        let%bind (env, list) = acc in
+        match next.Ast.item_node with
+        | Ast.Let bindings ->
+           let%bind map, scruts, ids, pats =
+             desugar_let_bindings t env bindings in
+           let%map env =
+             Map.fold map ~init:(Ok env) ~f:(fun ~key:key ~data:data acc ->
+                 let%bind env = acc in
+                 match Env.add env key data with
+                 | Some env -> Ok env
+                 | None ->
+                    Message.error next.Ast.item_ann (Message.Redefined_name key)
+               ) in
+           ( env
+           , { Term.item_ann = next.Ast.item_ann
+             ; item_node = Term.Top_let(scruts, ids, pats) }::list )
+        | Ast.Let_rec bindings ->
+           let%map env, bindings = desugar_rec_bindings t env bindings in
+           ( env
+           , { Term.item_ann = next.Ast.item_ann
+             ; item_node = Term.Top_let_rec bindings }::list )
+        | Ast.Type(adt, adts) ->
+           let%bind () =
+             List.fold ~f:(fun acc adt ->
+                 let%bind () = acc in
+                 let kvar = Kind.fresh_var typechecker.Typecheck.kvargen in
+                 Message.at adt.Ast.adt_ann
+                   (Package.add_typedef
+                      package adt.Ast.adt_name (Package.Todo (Kind.Var kvar)))
+               ) ~init:(Ok ()) (adt :: adts)
+           in
+           List.fold ~f:(fun acc adt ->
+               let%bind () = acc in
+               let%bind adt' = Typecheck.type_adt_of_ast_adt typechecker adt in
+               match Package.find_typedef package adt'.Type.name with
+               | None ->
+                  Message.error next.Ast.item_ann
+                    (Message.Unreachable_error "Typecheck ADT")
+               | Some ptr ->
+                  match !ptr with
+                  | Package.Compiled _ ->
+                     Message.error next.Ast.item_ann
+                       (Message.Redefined_name adt'.Type.name)
+                  | Package.Todo kind ->
+                     let%bind () =
+                       Message.at adt.Ast.adt_ann
+                         (Typecheck.unify_kinds kind (Type.kind_of_adt adt')) in
+                     let%map () =
+                       Message.at adt.Ast.adt_ann
+                         (Package.add_datacons package adt')
+                     in
+                     ptr := Package.Compiled (Type.Manifest adt')
+                  | Package.Prim _ ->
+                     let%map () =
+                       Message.at adt.Ast.adt_ann
+                         (Package.add_datacons package adt')
+                     in
+                     ptr := Package.Compiled (Type.Manifest adt')
+             ) ~init:(Ok ()) (adt::adts) >>| fun () -> (env, list)
+      )
+  in
   { Term.top_ann = ast_file.Ast.file_ann
   ; exports = ast_file.Ast.file_exports
   ; env = env
