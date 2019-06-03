@@ -19,7 +19,7 @@ type instr =
   | Deref of address * operand
   | Get of address * operand * int
   | Move of address * operand
-  | Package of address * string
+  | Package of address * Qual_id.Prefix.t
   | Prim of address * string
   | Ref of address * operand
   | Set_field of operand * int * operand

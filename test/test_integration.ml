@@ -71,6 +71,8 @@ let test_phase f curr_phase input format phase =
   | Ok _, true -> raise (Fail(input, curr_phase))
   | Ok next, false -> Some next
 
+let prefix = { Qual_id.Prefix.package = ""; path = [] }
+
 let test (input, phase) =
   let open Option.Monad_infix in
   let next =
@@ -79,9 +81,9 @@ let test (input, phase) =
       )) Syntax input input phase
   in
   next >>= fun next ->
-  let package = Package.create "" in
+  let package = Package.create prefix in
   let env = Env.empty (module String) in
-  let packages = Hashtbl.create (module String) in
+  let packages = Hashtbl.create (module Qual_id.Prefix) in
   let desugarer = Desugar.create package packages in
   test_phase (Desugar.term_of_expr desugarer env) Desugar input next phase
   >>= fun next ->
@@ -300,13 +302,15 @@ let tests =
       type Foo = Foo Product Int String
 
       let Pair i s = Pair 2 "foobar"
-     |}
-  ; {|let () = Prelude.puts "Hi"
      |} ]
 
+let std_prelude_prefix =
+  { Qual_id.Prefix.package = "std"
+  ; path = ["prelude"] }
+
 let create_std () =
-  let std = Hashtbl.create (module String) in
-  let rt = Hashtbl.create (module String) in
+  let std = Hashtbl.create (module Qual_id.Prefix) in
+  let rt = Hashtbl.create (module Qual_id.Prefix) in
 
   let prelude_ct, prelude_rt  =
     let code =
@@ -322,22 +326,25 @@ let puts = foreign "puts" forall a . a -> Unit
     in
     match
       Parser.file Lexer.expr (Lexing.from_string code)
-      |> Pipeline.compile (Hashtbl.create (module String)) "Prelude"
+      |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix))
+           std_prelude_prefix
     with
     | Ok(package, compiled) ->
        package, Eval.eval (Eval.create Io.stdio rt) compiled
     | Error _ -> assert false
   in
-  Hashtbl.add_exn std ~key:"Prelude" ~data:prelude_ct;
-  Hashtbl.add_exn rt ~key:"Prelude" ~data:prelude_rt;
+  Hashtbl.add_exn std ~key:std_prelude_prefix ~data:prelude_ct;
+  Hashtbl.add_exn rt ~key:std_prelude_prefix ~data:prelude_rt;
   std, rt
+
+let main_prefix = { Qual_id.Prefix.package = "main"; path = [] }
 
 let () =
   List.iter ~f:(fun test ->
       let std, rt = create_std () in
       match
         Parser.file Lexer.expr (Lexing.from_string test)
-        |> Pipeline.compile std "main"
+        |> Pipeline.compile std main_prefix
       with
       | Ok (_, file) ->
          begin
@@ -467,7 +474,8 @@ let tests =
 let () =
   List.iter ~f:(fun test ->
       match Parser.file Lexer.expr (Lexing.from_string test)
-            |> Pipeline.compile (Hashtbl.create (module String)) "main"
+            |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix))
+                 main_prefix
       with
       | Ok _ -> raise (Module_fail test)
       | Error _ -> ()

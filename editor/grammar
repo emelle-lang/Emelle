@@ -456,6 +456,7 @@ let compile_module hole =
   | Some modl ->
      let%map items = compile_items modl.Bexp.term.items in
      { Ast.file_ann = Bexp.Hole hole
+     ; file_imports = []
      ; file_exports = []
      ; file_items = items }
 
@@ -496,12 +497,14 @@ let () =
            set_console_text error_message
         | Ok modl ->
            match
-             let packages = Hashtbl.create (module String) in
-             Pipeline.compile packages "main" modl
+             let prefix = { Qual_id.Prefix.package = ""; path = [] } in
+             let packages = Hashtbl.create (module Qual_id.Prefix) in
+             Pipeline.compile packages prefix modl
            with
            | Ok (_, code) ->
               set_console_text "";
-              let ctx = Eval.create io (Hashtbl.create (module String)) in
+              let ctx = Eval.create io (Hashtbl.create (module Qual_id.Prefix))
+              in
               ignore (Eval.eval ctx code)
            | Error e ->
               let rec f = function

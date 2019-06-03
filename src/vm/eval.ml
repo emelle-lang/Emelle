@@ -37,7 +37,7 @@ and value =
   | Unit
 
 and proc =
-  | Emelle_proc of Asm.proc
+  | Emmeline_proc of Asm.proc
   | OCaml_proc of (value array -> value)
 
 type frame = {
@@ -50,7 +50,7 @@ type frame = {
 
 type t = {
     foreign_values : (string, value) Hashtbl.t;
-    eval'd_packages : (string, value) Hashtbl.t;
+    eval'd_packages : (Qual_id.Prefix.t, value) Hashtbl.t;
   }
 
 let create io rt =
@@ -183,7 +183,7 @@ and apply_function t file value args =
        begin match data.(0) with
        | Int idx ->
           let proc = Map.find_exn file.Asm.procs idx in
-          Emelle_proc proc, proc.Asm.frame_size, data, proc.Asm.params, []
+          Emmeline_proc proc, proc.Asm.frame_size, data, proc.Asm.params, []
        | _ -> failwith "Expected function pointer"
        end
     | Foreign { params; f; arity } -> OCaml_proc f, arity, [||], params, []
@@ -201,7 +201,7 @@ and apply_function t file value args =
         data.(param) <- arg
       );
     match proc with
-    | Emelle_proc proc ->
+    | Emmeline_proc proc ->
        let frame =
          { data = data
          ; proc

@@ -7,7 +7,7 @@ open Base
 
 type t =
   { vargen : Ident.gen
-  ; packages : (string, Package.t) Hashtbl.t
+  ; packages : (Qual_id.Prefix.t, Package.t) Hashtbl.t
   ; package : Package.t }
 
 let create package packages =
@@ -16,18 +16,18 @@ let create package packages =
   ; packages }
 
 let find f st = function
-  | Ast.Internal str ->
-     begin match f st.package str with
+  | Ast.Internal name ->
+     begin match f st.package name with
      | None -> None
-     | Some x -> Some ((st.package.Package.name, str), x)
+     | Some x -> Some ({ Qual_id.prefix = st.package.Package.prefix; name }, x)
      end
-  | Ast.External(pack_name, item_name) ->
-     match Hashtbl.find st.packages pack_name with
+  | Ast.External(_pack_name, _item_name) -> failwith "unimplemented"
+     (*match Hashtbl.find st.packages pack_name with
      | None -> None
      | Some package ->
         match f package item_name with
         | None -> None
-        | Some x -> Some ((pack_name, item_name), x)
+        | Some _ -> failwith "Unimplemented"*)
 
 let fresh_ident st name = Ident.fresh st.vargen name
 
@@ -213,8 +213,8 @@ let rec term_of_expr st env { Ast.expr_ann = ann; expr_node = node } =
           end
        | Ast.External _ -> (* Qualified name *)
           match find Package.find_val st qual_id with
-          | Some ((pkg_name, _), (ty, offset)) ->
-             Ok (Term.Extern_var(pkg_name, offset, ty))
+          | Some ({ Qual_id.prefix; _ }, (ty, offset)) ->
+             Ok (Term.Extern_var(prefix, offset, ty))
           | None -> Message.error ann (Message.Unresolved_path qual_id)
 
   in term >>| fun term -> { Term.ann = ann; term = term }

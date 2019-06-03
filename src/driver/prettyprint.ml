@@ -24,9 +24,16 @@ let newline pp =
     Buffer.add_string pp.buffer "  "
   done
 
-let print_ident pp (package, name) =
+let print_prefix pp { Qual_id.Prefix.package; path } =
   Buffer.add_string pp.buffer package;
-  Buffer.add_string pp.buffer ".";
+  Buffer.add_char pp.buffer '@';
+  List.iter path ~f:(fun part ->
+      Buffer.add_string pp.buffer part;
+      Buffer.add_char pp.buffer '.'
+    )
+
+let print_ident pp { Qual_id.prefix; name } =
+  print_prefix pp prefix;
   Buffer.add_string pp.buffer name
 
 let print_path pp = function
@@ -164,11 +171,6 @@ let print_lit pp = function
   | Literal.Unit ->
      Buffer.add_string pp.buffer "()"
 
-let print_qual_id pp (package, name) =
-  Buffer.add_string pp.buffer package;
-  Buffer.add_char pp.buffer '.';
-  Buffer.add_string pp.buffer name
-
 let rec print_comma_sep f pp = function
   | [] -> ()
   | [x] -> f pp x
@@ -265,10 +267,10 @@ module Ssa = struct
        print_assn pp dest;
        Buffer.add_string pp.buffer "load ";
        print_operand pp op
-    | Ssa.Package(dest, str) ->
+    | Ssa.Package(dest, prefix) ->
        print_assn pp dest;
        Buffer.add_string pp.buffer "package ";
-       Buffer.add_string pp.buffer (String.escaped str)
+       print_prefix pp prefix
     | Ssa.Prim(dest, str) ->
        print_assn pp dest;
        Buffer.add_string pp.buffer "prim ";
@@ -385,11 +387,11 @@ module Asm = struct
        Buffer.add_string pp.buffer @@ Int.to_string idx
     | Asm.Move(dest, src) ->
        print_instr_args pp "move" dest [src]
-    | Asm.Package(dest, str) ->
+    | Asm.Package(dest, prefix) ->
        Buffer.add_string pp.buffer "package ";
        print_addr pp dest;
        Buffer.add_char pp.buffer ' ';
-       Buffer.add_string pp.buffer (String.escaped str)
+       print_prefix pp prefix
     | Asm.Prim(dest, primop) ->
        Buffer.add_string pp.buffer "prim ";
        print_addr pp dest;

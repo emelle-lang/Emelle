@@ -12,9 +12,9 @@ let () =
   match
     let lexbuf = Lexing.from_channel stdin in
     let ast = Parser.expr_eof Lexer.expr lexbuf in
-    let package = Package.create "" in
+    let package = Package.create { Qual_id.Prefix.package = ""; path = [] } in
     let env = Env.empty (module String) in
-    let packages = Hashtbl.create (module String) in
+    let packages = Hashtbl.create (module Qual_id.Prefix) in
     let desugarer = Desugar.create package packages in
     let typechecker = Typecheck.create package packages in
     Desugar.term_of_expr desugarer env ast

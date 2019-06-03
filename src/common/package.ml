@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 (** A processed compilation unit:
     - Maps type constructor names to type declarations (abstract types or ADTs)
     - Maps data constructor names to ADTs and the integer index
@@ -15,14 +16,15 @@ type ty_state =
   | Todo of Kind.t
   | Prim of Type.prim
 
-type t =
-  { name : string
-  ; typedefs : (string, ty_state ref) Hashtbl.t
-  ; datacons : (string, Type.adt * int) Hashtbl.t
-  ; vals : (string, Type.t * int) Hashtbl.t }
+type t = {
+    prefix : Qual_id.Prefix.t;
+    typedefs : (string, ty_state ref) Hashtbl.t;
+    datacons : (string, Type.adt * int) Hashtbl.t;
+    vals : (string, Type.t * int) Hashtbl.t
+  }
 
-let create name =
-  { name
+let create prefix =
+  { prefix
   ; typedefs =
       Hashtbl.of_alist_exn
         (module String)

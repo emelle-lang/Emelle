@@ -34,7 +34,7 @@ type 'a opcode =
   | Fun of 'a proc
   | Get of operand * int
   | Load of operand
-  | Package of string
+  | Package of Qual_id.Prefix.t
   | Prim of string
   | Ref of operand
 

@@ -30,7 +30,7 @@ type quant =
 (** Each type is annotated with the greatest level of its children. *)
 type t =
   | App of t * t
-  | Nominal of Path.t
+  | Nominal of Qual_id.t
   | Prim of prim
   | Var of var
 [@@deriving sexp]

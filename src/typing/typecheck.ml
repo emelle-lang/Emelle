@@ -1,13 +1,14 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type t = {
     package : Package.t;
-    packages : (string, Package.t) Hashtbl.t;
+    packages : (Qual_id.Prefix.t, Package.t) Hashtbl.t;
     env : (Ident.t, Type.t) Hashtbl.t;
     let_level : int;
     lam_level : int;
@@ -33,10 +34,10 @@ let fresh_tvar ?(purity = Type.Pure) (checker : t) =
     (Type.fresh_var
        checker.tvargen purity (fresh_quant checker) checker.lam_level Kind.Mono)
 
-let find f st (pack_name, item_name) =
-  match Hashtbl.find st.packages pack_name with
+let find f st { Qual_id.prefix; name } =
+  match Hashtbl.find st.packages prefix with
   | None -> None
-  | Some package -> f package item_name
+  | Some package -> f package name
 
 (** [unify_kinds kind1 kind2] unifies the two kinds. *)
 let rec unify_kinds l r =
@@ -95,7 +96,7 @@ let rec unify_types checker lhs rhs =
          | Error e1, Error e2 -> Error (Message.And_error(e1, e2))
        end
     | Type.Nominal lstr, Type.Nominal rstr
-         when (Path.compare lstr rstr) = 0 ->
+         when (Qual_id.compare lstr rstr) = 0 ->
        Ok ()
     | Type.Prim lprim, Type.Prim rprim
          when Type.equal_prim lprim rprim ->
@@ -131,8 +132,9 @@ let rec normalize checker tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
   | Ast.TNominal path ->
      let ident =
        match path with
-       | Ast.Internal str -> (checker.package.Package.name, str)
-       | Ast.External(x, y) -> (x, y)
+       | Ast.Internal name ->
+          { Qual_id.prefix = checker.package.Package.prefix; name }
+       | Ast.External _ -> failwith "Unimplemented"
      in
      begin
        match find Package.find_typedef checker ident with
@@ -229,7 +231,9 @@ let type_adt_of_ast_adt checker adt =
           >>| fun product ->
           let out_ty =
             Type.with_params
-              (Type.Nominal (checker.package.Package.name, adt.Ast.adt_name))
+              (Type.Nominal
+                 { Qual_id.prefix = checker.package.Package.prefix
+                 ; name = adt.Ast.adt_name })
               (List.map ~f:(fun var -> Type.Var var) tvar_list)
           in
           let _ = set_levels_of_tvars product in
@@ -435,10 +439,10 @@ let rec infer_term checker Term.{ term; ann } =
         ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
         ; expr = Typedtree.Constr(idx, List.length product) }
 
-  | Term.Extern_var(pkg_name, offset, ty) ->
+  | Term.Extern_var(prefix, offset, ty) ->
      Ok { Typedtree.ann
         ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
-        ; expr = Typedtree.Extern_var(pkg_name, offset) }
+        ; expr = Typedtree.Extern_var(prefix, offset) }
 
   | Term.Lam(id, body) ->
      in_new_lam_level (fun checker ->

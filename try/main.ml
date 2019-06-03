@@ -7,6 +7,8 @@ open Base
 open Js_of_ocaml
 open Emmeline
 
+let main_prefix = { Qual_id.Prefix.package = ""; path = [] }
+
 let () =
   Dom_html.window##.onload :=
     Dom.handler (fun _ ->
@@ -40,11 +42,13 @@ let () =
                 let program = textarea##.value in
                 let bytestr = Js.to_bytestring program in
                 Parser.file Lexer.expr (Lexing.from_string bytestr)
-                |> Pipeline.compile (Hashtbl.create (module String)) "main"
+                |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix))
+                     main_prefix
               with
               | Ok (_, asm_module) ->
                  Caml.print_endline "OK!";
-                 let ctx = Eval.create io (Hashtbl.create (module String)) in
+                 let ctx =
+                   Eval.create io (Hashtbl.create (module Qual_id.Prefix)) in
                  ignore (Eval.eval ctx asm_module)
               | Error errs ->
                  Caml.print_endline "ERROR!";

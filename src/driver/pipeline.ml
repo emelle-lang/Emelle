@@ -7,7 +7,7 @@
 open Base
 
 type t =
-  { packages : (string, Package.t) Hashtbl.t
+  { packages : (Qual_id.Prefix.t, Package.t) Hashtbl.t
   ; package : Package.t }
 
 let create name packages =

@@ -17,10 +17,12 @@ let rec is_mono = function
   | Kind.Var { kind = Some kind; _ } -> is_mono kind
   | _ -> false
 
+let prefix = { Qual_id.Prefix.package = ""; path = [] }
+
 let () =
   let f x =
-    let package = Package.create "" in
-    let packages = Hashtbl.create (module String) in
+    let package = Package.create prefix in
+    let packages = Hashtbl.create (module Qual_id.Prefix) in
     let checker = Typecheck.create package packages in
     match Typecheck.kind_of_type checker x with
     | Ok kind -> assert (is_mono kind)
@@ -29,8 +31,8 @@ let () =
 
 let () =
   let f x =
-    let package = Package.create "" in
-    let packages = Hashtbl.create (module String) in
+    let package = Package.create prefix in
+    let packages = Hashtbl.create (module Qual_id.Prefix) in
     let checker = Typecheck.create package packages in
     match Typecheck.kind_of_type checker x with
     | Ok kind -> assert (not (is_mono kind))

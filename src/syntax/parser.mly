@@ -2,11 +2,13 @@
 %}
 
 %token AND
+%token AS
 %token CASE
 %token EXPORT
 %token FORALL
 %token FOREIGN
 %token FUN
+%token IMPORT
 %token IN
 %token LET
 %token REC
@@ -67,9 +69,19 @@ let qual_lid :=
 let exports :=
   | EXPORT; LPARENS; l = separated_list(COMMA, LIDENT); RPARENS; { l }
 
+let import :=
+  | IMPORT;
+    package = STRING_LIT;
+    path = nonempty_list(UIDENT);
+    alias = option(AS; id = UIDENT; { id } );
+      { { Ast.package; path; alias } }
+
 let package :=
-  | exports = option(exports); items = list(item);
+  | exports = option(exports);
+    imports = list(import);
+    items = list(item);
       { { Ast.file_ann = ($symbolstartpos, $endpos)
+        ; file_imports = imports
         ; file_items = items
         ; file_exports =
             match exports with

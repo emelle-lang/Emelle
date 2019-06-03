@@ -6,7 +6,7 @@
 open Base
 
 type error =
-  | Abstract_type of Path.t
+  | Abstract_type of Qual_id.t
   | And_error of error * error
   | Kind_unification_fail of Kind.t * Kind.t
   | Lexer_error of string
@@ -22,11 +22,11 @@ type error =
   | Typed_hole of (string, Ident.t, String.comparator_witness) Env.t
                   * (Ident.t, Type.t) Hashtbl.t * Type.t
   | Unimplemented of string
-  | Unknown_constr of Path.t * string
+  | Unknown_constr of Qual_id.t * string
   | Unreachable_error of string
-  | Unresolved_id of Path.t
+  | Unresolved_id of Qual_id.t
   | Unresolved_path of Ast.qual_id
-  | Unresolved_type of Path.t
+  | Unresolved_type of Qual_id.t
   | Unresolved_typevar of string
   | Unsafe_let_rec
 

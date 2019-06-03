@@ -5,7 +5,7 @@
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
 type t
 
-val create : Package.t -> (string, Package.t) Base.Hashtbl.t -> t
+val create : Package.t -> (Qual_id.Prefix.t, Package.t) Base.Hashtbl.t -> t
 (** Create a fresh desugarer state *)
 
 val term_of_expr :
@@ -20,6 +20,6 @@ val desugar :
   Typecheck.t ->
   (string, Ident.t, Base.String.comparator_witness) Env.t ->
   Package.t ->
-  (string, Package.t) Base.Hashtbl.t ->
+  (Qual_id.Prefix.t, Package.t) Base.Hashtbl.t ->
   'a Ast.file ->
   ('a Term.file, 'a Message.t) result

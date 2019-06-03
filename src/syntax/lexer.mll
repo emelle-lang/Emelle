@@ -8,11 +8,13 @@
     Hashtbl.of_alist_exn
       (module String)
       [ "and", AND
+      ; "as", AS
       ; "case", CASE
       ; "export", EXPORT
       ; "forall", FORALL
       ; "foreign", FOREIGN
       ; "fun", FUN
+      ; "import", IMPORT
       ; "in", IN
       ; "let", LET
       ; "rec", REC
