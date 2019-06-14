@@ -1,2 +1,2 @@
 (lang dune 1.0)
-(context (opam (switch 4.07.1) (name main) (merlin)))
+(context (opam (switch 4.08.0) (name main) (merlin)))

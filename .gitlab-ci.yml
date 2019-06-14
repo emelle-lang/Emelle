@@ -6,20 +6,11 @@ before_script:
 - apt-get install -qq bubblewrap
 - apt-get install -qq unzip
 - echo "" | sh <(curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)
-- opam init -c 4.07.1 --root=.opam
-- eval $(opam env --root=.opam --set-root)
-- opam update
-- opam install -y -q dune
-- opam install -y -q base
-- opam install -y -q core
-- opam install -y -q stdio
-- opam install -y -q ppxlib
-- opam install -y -q ppx_jane
-- opam install -y -q menhir
+- opam init -c 4.08.0
+- eval $(opam env)
 - opam install -y -q odoc
-- opam install -y -q js_of_ocaml
-- opam install -y -q js_of_ocaml-ppx
-- opam upgrade -y -q
+- opam install -y -q . --deps-only
+- opam install -y -q ./bexp --deps-only
 
 build:
   stage: build
@@ -53,7 +44,3 @@ pages:
     - public
   only:
   - master
-
-cache:
-  paths:
-  - .opam

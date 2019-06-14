@@ -5,5 +5,5 @@
 
 (executable
   (name main)
-  (libraries bexp core_kernel emmeline)
-  (preprocess (pps js_of_ocaml-ppx ppx_jane bexp.ppx_symbol)))
+  (libraries base bexp emmeline)
+  (preprocess (pps js_of_ocaml-ppx ppx_bexp ppx_let)))
