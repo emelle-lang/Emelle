@@ -15,12 +15,20 @@ module T =
      | Local of Bexp.Widget.text_input
      | Qual of Bexp.Widget.text_input * Bexp.Widget.text_input
 
-   type items =
+   type imports = {
+       import_package : Bexp.Widget.text_input;
+       import_path : Bexp.Widget.text_input;
+       import_alias : Bexp.Widget.text_input;
+       import_next : (symbols, imports) Bexp.hole;
+     }
+
+   and items =
      | ILet of (symbols, let_def) Bexp.hole * (symbols, items) Bexp.hole
      | ILet_rec of (symbols, let_rec) Bexp.hole * (symbols, items) Bexp.hole
      | ITypedefs of (symbols, typedef) Bexp.hole * (symbols, items) Bexp.hole
 
    and modul = {
+       imports : (symbols, imports) Bexp.hole;
        items : (symbols, items) Bexp.hole;
      }
 
@@ -103,6 +111,10 @@ let modul_data =
   { Bexp.palette_name = "Module"
   ; palette_color = "lime" }
 
+let imports_data =
+  { Bexp.palette_name = "Import"
+  ; palette_color = "darkseagreen" }
+
 let items_data =
   { Bexp.palette_name = "Item"
   ; palette_color = "brown" }
@@ -156,7 +168,15 @@ let ctx = Bexp.Workspace.create container entry_hole
 }}
 
 modul:
-  | modul: "module" "where" newline items {{ fun items -> { items } }}
+  | modul: "module" "where" newline
+    imports newline
+    items {{ fun (imports, items) -> { imports; items } }}
+  ;
+
+imports:
+  | import: "import" ?"" tab ?"" "as" ?"" newline imports
+    {{ fun (import_package, import_path, import_alias, import_next) ->
+       { import_package; import_path; import_alias; import_next } }}
   ;
 
 items:
@@ -425,6 +445,18 @@ and compile_let_rec hole =
      { Ast.rec_ann = Bexp.Hole hole
      ; rec_lhs = ident#value; rec_rhs = expr } :: next
 
+let rec compile_imports hole =
+  Bexp.Hole.clear_error hole;
+  match hole.Bexp.hole_term with
+  | Some term ->
+     let { import_package; import_path; import_alias; import_next }
+       = term.Bexp.term
+     in
+     { Ast.package = import_package#value
+     ; path = [import_path#value]
+     ; alias = Some import_alias#value } :: compile_imports import_next
+  | None -> []
+
 let rec compile_items hole =
   let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
@@ -453,10 +485,10 @@ let compile_module hole =
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | None -> Error (Bexp.Hole hole, "No module")
-  | Some modl ->
-     let%map items = compile_items modl.Bexp.term.items in
+  | Some term ->
+     let%map items = compile_items term.Bexp.term.items in
      { Ast.file_ann = Bexp.Hole hole
-     ; file_imports = []
+     ; file_imports = compile_imports term.Bexp.term.imports
      ; file_exports = []
      ; file_items = items }
 
