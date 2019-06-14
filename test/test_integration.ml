@@ -85,9 +85,10 @@ let test (input, phase) =
   let env = Env.empty (module String) in
   let packages = Hashtbl.create (module Qual_id.Prefix) in
   let desugarer = Desugar.create package packages in
-  test_phase (Desugar.term_of_expr desugarer env) Desugar input next phase
-  >>= fun next ->
   let typechecker = Typecheck.create package packages in
+  test_phase
+    (Desugar.term_of_expr desugarer typechecker env) Desugar input next phase
+  >>= fun next ->
   test_phase (Typecheck.infer_term typechecker) Typecheck input next phase
 
 let _ = List.map ~f:test tests
@@ -306,6 +307,16 @@ let tests =
   ; {|import "std" Prelude as P
 
       let () = P.puts "Hello world!\n"
+     |}
+  ; {|import "std" Prelude as P
+
+      let opt = P.None
+
+      let () =
+        P.puts
+          (case opt with
+           | P.None -> "Good"
+           | P.Some _ -> "Bad")
      |} ]
 
 let std_prelude_prefix =
@@ -326,6 +337,8 @@ let id = fun x -> x
 let const = fun x _ -> x
 
 let puts = foreign "puts" forall a . a -> Unit
+
+type Option a = Some a | None
        |}
     in
     match

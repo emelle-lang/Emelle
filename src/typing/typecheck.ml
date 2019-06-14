@@ -115,136 +115,6 @@ let rec unify_types checker lhs rhs =
          var.ty <- Some ty
     | _ -> Error (Message.Type_unification_fail(lhs, rhs))
 
-(** Convert an Ast.monotype into an Type.t *)
-let rec normalize checker tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
-  let open Result.Monad_infix in
-  match node with
-  | Ast.TApp(constr, arg) ->
-     normalize checker tvars constr >>= fun constr ->
-     normalize checker tvars arg >>| fun arg ->
-     Type.App(constr, arg)
-  | Ast.TApplied_arrow(dom, codom) ->
-     normalize checker tvars dom >>= fun dom ->
-     normalize checker tvars codom >>| fun codom ->
-     Type.arrow dom codom
-  | Ast.TArrow -> Ok (Type.Prim Type.Arrow)
-  | Ast.TRef -> Ok (Type.Prim Type.Ref)
-  | Ast.TNominal path ->
-     let ident =
-       match path with
-       | Ast.Internal name ->
-          { Qual_id.prefix = checker.package.Package.prefix; name }
-       | Ast.External _ -> failwith "Unimplemented"
-     in
-     begin
-       match find Package.find_typedef checker ident with
-       | Some { contents = Package.Prim prim } -> Ok (Type.Prim prim)
-       | Some _ -> Ok (Type.Nominal ident)
-       | None -> Message.error ann (Message.Unresolved_path path)
-     end
-  | Ast.TVar name ->
-     match Env.find tvars name with
-     | Some tvar -> Ok tvar
-     | None -> Message.error ann (Message.Unresolved_typevar name)
-
-let fresh_kinds_of_typeparams checker =
-  List.map ~f:(fun _ -> (Kind.Var (Kind.fresh_var checker.kvargen)))
-
-let tvars_of_typeparams checker tvar_map kinds decls =
-  let open Result.Monad_infix in
-  let rec f tvar_map tvar_list kinds decls =
-    match kinds, decls with
-    | kind::kinds, (str, purity)::decls ->
-       let tvar =
-         match purity with
-         | Ast.Pure ->
-            Type.fresh_var checker.tvargen Type.Pure Type.Univ 0 kind
-         | Ast.Impure i ->
-            Type.fresh_var
-              checker.tvargen Type.Impure Type.Univ i kind
-       in
-       begin match Env.add tvar_map str (Type.Var tvar) with
-       | None -> Error (Message.Redefined_typevar str)
-       | Some tvar_map ->
-          (* Fold RIGHT, not left! *)
-          f tvar_map tvar_list kinds decls >>| fun (tvar_map, tvar_list) ->
-          (tvar_map, tvar::tvar_list)
-       end
-    | [], [] -> Ok (tvar_map, tvar_list)
-    | _ -> Error (Message.Unreachable_error "")
-  in f tvar_map [] kinds decls
-
-let type_of_ast_polytype
-      checker
-      { Ast.polyty_params = typeparams
-      ; polyty_body = body
-      ; polyty_ann = ann } =
-  let open Result.Monad_infix in
-  (let tvar_map = Env.empty (module String) in
-   let kinds = fresh_kinds_of_typeparams checker typeparams in
-   tvars_of_typeparams checker tvar_map kinds typeparams) |> Message.at ann
-  >>= fun (tvar_map, _) ->
-  normalize checker tvar_map body
-
-let set_levels_of_tvars product =
-  let helper idx =
-    let rec f = function
-      | Type.App(tcon, targ) ->
-         f tcon;
-         f targ
-      | Type.Var ({ Type.purity = Type.Impure; _ } as tvar) ->
-         tvar.Type.purity <- Type.Impure;
-         tvar.Type.lam_level <- idx
-      | _ -> ()
-    in function
-    | Type.App(Type.Prim Type.Ref, ty) -> f ty
-    | _ -> ()
-  in List.fold ~f:(fun idx ty -> helper idx ty; idx + 1) ~init:0 product
-
-(** Convert an [Ast.adt] into a [Type.adt] *)
-let type_adt_of_ast_adt checker adt =
-  let open Result.Monad_infix in
-  let kinds = fresh_kinds_of_typeparams checker adt.Ast.adt_params in
-  let kind = Kind.curry kinds Kind.Mono in
-  let constr_map = Hashtbl.create (module String) in
-  List.fold_right
-    adt.Ast.adt_datacons
-    ~init:(Ok ([], List.length adt.Ast.adt_datacons - 1))
-    ~f:(fun { Ast.datacon_name = name
-            ; datacon_product = product
-            ; datacon_ann = ann } acc ->
-      acc >>= fun (constr_list, idx) ->
-      match Hashtbl.add constr_map ~key:name ~data:idx with
-      | `Duplicate -> Message.error ann (Message.Redefined_constr name)
-      | `Ok ->
-         (let tvar_map = Env.empty (module String) in
-          let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.adt_params in
-          Message.at ann (tvars_of_typeparams checker tvar_map kinds tparams)
-          >>= fun (tvar_map, tvar_list) ->
-          List.fold_right ~f:(fun ty acc ->
-              acc >>= fun products ->
-              normalize checker tvar_map ty >>= fun ty ->
-              Message.at ann (kind_of_type checker ty) >>= fun kind ->
-              Message.at ann (unify_kinds kind Kind.Mono) >>| fun () ->
-              ty::products
-            ) ~init:(Ok []) product
-          >>| fun product ->
-          let out_ty =
-            Type.with_params
-              (Type.Nominal
-                 { Qual_id.prefix = checker.package.Package.prefix
-                 ; name = adt.Ast.adt_name })
-              (List.map ~f:(fun var -> Type.Var var) tvar_list)
-          in
-          let _ = set_levels_of_tvars product in
-          ((name, product, out_ty)::constr_list, idx - 1))
-    ) >>| fun (datacons, _) ->
-  let datacons = Array.of_list datacons in
-  { Type.name = adt.Ast.adt_name
-  ; adt_kind = kind
-  ; datacon_names = constr_map
-  ; datacons }
-
 let in_new_let_level f self =
   f { self with let_level = self.let_level + 1 }
 
@@ -491,10 +361,9 @@ let rec infer_term checker Term.{ term; ann } =
         ; expr = Typedtree.Lit lit }
 
   | Term.Prim(op, ty) ->
-     type_of_ast_polytype checker ty >>| fun ty ->
-     { Typedtree.ann
-     ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
-     ; expr = Typedtree.Prim op }
+     Ok { Typedtree.ann
+        ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
+        ; expr = Typedtree.Prim op }
 
   | Term.Ref ->
      in_new_lam_level (fun checker ->

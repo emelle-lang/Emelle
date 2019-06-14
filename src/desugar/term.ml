@@ -17,7 +17,7 @@ type ('ann, 'fix) term =
   | Let of Ident.t * 'fix * 'fix
   | Let_rec of ('ann, 'fix) bind_group * 'fix
   | Lit of Literal.t
-  | Prim of string * 'ann Ast.polytype
+  | Prim of string * Type.t
   | Ref
   | Seq of 'fix * 'fix
   | Typed_hole of env

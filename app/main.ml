@@ -17,7 +17,7 @@ let () =
     let packages = Hashtbl.create (module Qual_id.Prefix) in
     let desugarer = Desugar.create package packages in
     let typechecker = Typecheck.create package packages in
-    Desugar.term_of_expr desugarer env ast
+    Desugar.term_of_expr desugarer typechecker env ast
     >>= fun term ->
     Typecheck.infer_term typechecker term
     >>| fun typedtree ->

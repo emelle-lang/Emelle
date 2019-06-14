@@ -21,8 +21,6 @@ val kind_of_type : t -> Type.t -> (Kind.t, Message.error) result
 
 val gen : t -> Type.t -> unit
 
-val type_adt_of_ast_adt : t -> 'a Ast.adt -> (Type.adt, 'a Message.t) result
-
 val infer_term : t -> 'a Term.t -> ('a Typedtree.t, 'a Message.t) result
 
 val typecheck : t -> 'a Term.file -> ('a Typedtree.file, 'a Message.t) result

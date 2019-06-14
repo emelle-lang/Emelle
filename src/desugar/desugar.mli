@@ -9,7 +9,7 @@ val create : Package.t -> (Qual_id.Prefix.t, Package.t) Base.Hashtbl.t -> t
 (** Create a fresh desugarer state *)
 
 val term_of_expr :
-  t ->
+  t -> Typecheck.t ->
   (string, Ident.t, Base.String.comparator_witness) Env.t
   -> 'a Ast.expr
   -> ('a Term.t, 'a Message.t) result
