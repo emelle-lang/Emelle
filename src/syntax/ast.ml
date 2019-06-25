@@ -103,9 +103,10 @@ type 'a item = {
   }
 
 type 'a import = {
-    package : string;
-    path : string list;
-    alias : string option;
+    import_package : string;
+    import_path : string list;
+    import_alias : string option;
+    import_ann : 'a;
   }
 
 type 'a file = {

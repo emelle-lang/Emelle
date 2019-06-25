@@ -71,10 +71,13 @@ let exports :=
 
 let import :=
   | IMPORT;
-    package = STRING_LIT;
-    path = separated_nonempty_list(DOT, UIDENT);
-    alias = option(AS; id = UIDENT; { id } );
-      { { Ast.package; path; alias } }
+    import_package = STRING_LIT;
+    import_path = separated_nonempty_list(DOT, UIDENT);
+    import_alias = option(AS; id = UIDENT; { id } );
+      { { Ast.import_ann = ($symbolstartpos, $endpos)
+        ; import_package
+        ; import_path
+        ; import_alias } }
 
 let package :=
   | exports = option(exports);

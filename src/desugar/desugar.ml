@@ -7,13 +7,13 @@ open Base
 
 type t =
   { vargen : Ident.gen
-  ; aliases : (string, Qual_id.Prefix.t) Hashtbl.t
+  ; imports : (string, Package.t) Hashtbl.t
   ; packages : (Qual_id.Prefix.t, Package.t) Hashtbl.t
   ; package : Package.t }
 
 let create package packages =
   { vargen = Ident.create_gen ()
-  ; aliases = Hashtbl.create (module String)
+  ; imports = Hashtbl.create (module String)
   ; package
   ; packages }
 
@@ -24,15 +24,12 @@ let find f error st = function
      | Some x -> Ok ({ Qual_id.prefix = st.package.Package.prefix; name }, x)
      end
   | Ast.External(mod_alias, name) ->
-     match Hashtbl.find st.aliases mod_alias with
-     | None -> Error (Message.Unresolved_name name)
-     | Some prefix ->
-        match Hashtbl.find st.packages prefix with
-        | None -> Error (Message.Unresolved_prefix prefix)
-        | Some package ->
-           match f package name with
-           | None -> Error (error name)
-           | Some x -> Ok ({ Qual_id.prefix; name }, x)
+     match Hashtbl.find st.imports mod_alias with
+     | None -> Error (Message.Unresolved_name mod_alias)
+     | Some package ->
+        match f package name with
+        | None -> Error (error name)
+        | Some x -> Ok ({ Qual_id.prefix = package.Package.prefix; name }, x)
 
 let fresh_ident st name = Ident.fresh st.vargen name
 
@@ -360,14 +357,20 @@ and desugar_let_bindings self checker env bindings =
       ) ~init:(Set.empty (module Ident)) map
   in (map, scruts, ids, pats)
 
-let load_import t { Ast.package; path; alias } =
+let load_import t
+      { Ast.import_package = package
+      ; import_path = path
+      ; import_alias = alias
+      ; _ } =
   match alias with
   | Some alias ->
      let prefix = { Qual_id.Prefix.package; path } in
-     Hashtbl.set t.aliases ~key:alias ~data:prefix
-  | None -> ()
-
-
+     begin match Hashtbl.find t.packages prefix with
+     | Some package ->
+        Ok (Hashtbl.set t.imports ~key:alias ~data:package)
+     | None -> Error (Message.Unresolved_prefix prefix)
+     end
+  | None -> Ok ()
 
 let set_levels_of_tvars product =
   let helper idx =
@@ -432,7 +435,10 @@ let type_adt_of_ast_adt t checker adt =
 let desugar typechecker env package packages ast_file =
   let open Result.Let_syntax in
   let t = create package packages in
-  List.iter ast_file.Ast.file_imports ~f:(load_import t);
+  let%bind () =
+    List.fold_result ast_file.Ast.file_imports ~init:() ~f:(fun () import ->
+        Message.at import.Ast.import_ann (load_import t import)
+      ) in
   let%map env, list =
     List.fold ast_file.Ast.file_items ~init:(Ok (env, [])) ~f:(fun acc next ->
         let%bind (env, list) = acc in

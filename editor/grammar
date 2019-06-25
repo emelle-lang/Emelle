@@ -449,12 +449,13 @@ let rec compile_imports hole =
   Bexp.Hole.clear_error hole;
   match hole.Bexp.hole_term with
   | Some term ->
-     let { import_package; import_path; import_alias; import_next }
-       = term.Bexp.term
+     let { import_package; import_path; import_alias; import_next } =
+       term.Bexp.term
      in
-     { Ast.package = import_package#value
-     ; path = [import_path#value]
-     ; alias = Some import_alias#value } :: compile_imports import_next
+     { Ast.import_ann = Bexp.Hole hole
+     ; import_package = import_package#value
+     ; import_path = [import_path#value]
+     ; import_alias = Some import_alias#value } :: compile_imports import_next
   | None -> []
 
 let rec compile_items hole =
