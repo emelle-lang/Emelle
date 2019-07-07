@@ -336,7 +336,7 @@ let id = fun x -> x
 
 let const = fun x _ -> x
 
-let puts = foreign "puts" forall a . a -> Unit
+let puts = foreign "puts" forall . String -> Unit
 
 type Option a = Some a | None
        |}

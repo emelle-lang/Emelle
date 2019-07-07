@@ -1,6 +1,11 @@
 (rule
   (targets main.ml)
-  (action (run ../bexp/dsl/bexp_dsl.exe grammar -o main.ml))
+  (deps    (:first-dep main.cppo.ml) (source_tree ../std))
+  (action  (run %{bin:cppo} %{first-dep} -o %{targets} -n)))
+
+(rule
+  (targets main.cppo.ml)
+  (action (run ../bexp/dsl/bexp_dsl.exe grammar -o main.cppo.ml))
   (deps grammar (package bexp)))
 
 (executable

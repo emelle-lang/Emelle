@@ -54,6 +54,7 @@ module T =
      | ELet_rec of ((symbols, let_rec) Bexp.hole * (symbols, expr) Bexp.hole)
      | ERef
      | ESeq of bin_expr
+     | EString of Bexp.Widget.text_input
      | EUnit
      | EVar of (symbols, ident) Bexp.hole
 
@@ -236,9 +237,10 @@ expr:
   | elam: "fun" pat "->" expr {{ fun (p, e) -> ELam(p, e) }}
   | elet: "let" let_def "in" newline expr {{ fun (d, b) -> ELet(d, b) }}
   | elet_rec: "let rec" let_rec "in" newline expr
-    {{ fun (d, b) -> ELet_rec(d, b) }}
+      {{ fun (d, b) -> ELet_rec(d, b) }}
   | eref: "ref" {{ fun () -> ERef }}
-  | eseq: expr ";" expr {{ fun (f, s) -> ESeq(f, s) }}
+  | eseq: expr ";" newline expr {{ fun (f, s) -> ESeq(f, s) }}
+  | estring: "\"" ?"Hello, world!" "\"" {{ fun input -> EString input }}
   | eunit: "()" {{ fun () -> EUnit }}
   | evar: "var" ident {{ fun input -> EVar input }}
   ;
@@ -411,6 +413,8 @@ and compile_expr hole =
           let%bind f = compile_expr f in
           let%map s = compile_expr s in
           Ast.Seq(f, s)
+       | EString input ->
+          Ok (Ast.Lit (Literal.String input#value))
        | EUnit -> Ok (Ast.Lit Literal.Unit)
        | EVar ident ->
           let%map ident = compile_ident ident in
@@ -517,6 +521,40 @@ let io =
   { Io.putc = (fun _ -> ())
   ; puts = append_console_text }
 
+let std_path str =
+  { Qual_id.Prefix.package = "std"
+  ; path = [str] }
+
+let create_std () =
+  let std = Hashtbl.create (module Qual_id.Prefix) in
+  let rt = Hashtbl.create (module Qual_id.Prefix) in
+
+  let make_module mod_name source_code =
+    let prefix = std_path mod_name in
+    let module_interface, module_object =
+      match
+        Parser.file Lexer.expr (Lexing.from_string source_code)
+        |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix)) prefix
+      with
+      | Ok(package, compiled) ->
+         package, Eval.eval (Eval.create io rt) compiled
+      | Error e ->
+         let pp = Prettyprint.create () in
+         Prettyprint.print_message Prettyprint.print_span pp e;
+         Caml.print_endline (Prettyprint.to_string pp);
+         assert false
+    in
+    Hashtbl.add_exn std ~key:prefix ~data:module_interface;
+    Hashtbl.add_exn rt ~key:prefix ~data:module_object
+  in
+  make_module "IO" {|
+#include "../std/io.ml"
+  |};
+  make_module "Option" {|
+#include "../std/option.ml"
+  |};
+  std, rt
+
 let error_message =
   "There are errors in the program! Click the highlighted " ^
   "blocks to see the error message."
@@ -524,20 +562,19 @@ let error_message =
 let () =
   typecheck_button##.onclick :=
     Dom.handler (fun _ ->
+        set_console_text "";
         begin match compile_module entry_hole with
         | Error (Bexp.Hole hole, error) ->
            Bexp.Hole.set_error hole (fun () -> set_console_text error);
            set_console_text error_message
         | Ok modl ->
+           let std, rt = create_std () in
            match
              let prefix = { Qual_id.Prefix.package = ""; path = [] } in
-             let packages = Hashtbl.create (module Qual_id.Prefix) in
-             Pipeline.compile packages prefix modl
+             Pipeline.compile std prefix modl
            with
            | Ok (_, code) ->
-              set_console_text "";
-              let ctx = Eval.create io (Hashtbl.create (module Qual_id.Prefix))
-              in
+              let ctx = Eval.create io rt in
               ignore (Eval.eval ctx code)
            | Error e ->
               let rec f = function
