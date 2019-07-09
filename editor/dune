@@ -4,8 +4,8 @@
   (action  (run %{bin:cppo} %{first-dep} -o %{targets} -n)))
 
 (rule
-  (targets main.cppo.ml)
-  (action (run ../bexp/dsl/bexp_dsl.exe grammar -o main.cppo.ml))
+  (targets grammar.ml)
+  (action (run ../bexp/dsl/bexp_dsl.exe grammar -o grammar.ml))
   (deps grammar (package bexp)))
 
 (executable
