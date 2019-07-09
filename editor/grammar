@@ -357,7 +357,7 @@ and compile_patterns hole =
   | Some { Bexp.term = PList(p, ps); _ }->
      let%bind p = compile_pattern p in
      let%map ps = compile_patterns ps in
-     p::ps
+     p :: ps
 
 let rec compile_branch hole =
   let open Result.Let_syntax in
@@ -372,7 +372,7 @@ let rec compile_branch hole =
      let%bind pat = compile_pattern pat in
      let%bind expr = compile_expr expr in
      let%map next = compile_branch next in
-     (pat, expr)::next
+     (pat, expr) :: next
 
 and compile_expr hole =
   let open Result.Let_syntax in
@@ -483,7 +483,7 @@ let rec compile_items hole =
              Ok (Ast.Type(def, defs), next)
      in
      let%map next = compile_items next in
-     { Ast.item_ann = Bexp.Hole hole; item_node = node }::next
+     { Ast.item_ann = Bexp.Hole hole; item_node = node } :: next
 
 let compile_module hole =
   let open Result.Let_syntax in
@@ -525,6 +525,11 @@ let std_path str =
   { Qual_id.Prefix.package = "std"
   ; path = [str] }
 
+let create_vm rt =
+  let ctx = Eval.create io rt in
+  Graphics.add ctx;
+  ctx
+
 let create_std () =
   let std = Hashtbl.create (module Qual_id.Prefix) in
   let rt = Hashtbl.create (module Qual_id.Prefix) in
@@ -537,11 +542,14 @@ let create_std () =
         |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix)) prefix
       with
       | Ok(package, compiled) ->
-         package, Eval.eval (Eval.create io rt) compiled
+         package, Eval.eval (create_vm rt) compiled
       | Error e ->
          let pp = Prettyprint.create () in
          Prettyprint.print_message Prettyprint.print_span pp e;
          Caml.print_endline (Prettyprint.to_string pp);
+         assert false
+      | exception _e ->
+         Caml.print_endline ("Exception when compiling module " ^ mod_name);
          assert false
     in
     Hashtbl.add_exn std ~key:prefix ~data:module_interface;
@@ -552,6 +560,9 @@ let create_std () =
   |};
   make_module "Option" {|
 #include "../std/option.ml"
+  |};
+  make_module "Graphics" {|
+#include "../std/graphics.ml"
   |};
   std, rt
 
@@ -574,7 +585,7 @@ let () =
              Pipeline.compile std prefix modl
            with
            | Ok (_, code) ->
-              let ctx = Eval.create io rt in
+              let ctx = create_vm rt in
               ignore (Eval.eval ctx code)
            | Error e ->
               let rec f = function
