@@ -43,10 +43,10 @@ and 'a value = 'a constraint 'a = [>
   ]
 
 type 'a frame = {
-    data : 'a value array;
+    mutable data : 'a value array;
     mutable block : Asm.block;
     mutable ip : int;
-    proc : Asm.proc;
+    mutable proc : Asm.proc;
     mutable return : 'a value;
   }
 
@@ -54,6 +54,19 @@ type 'a t = {
     foreign_values : (string, 'a value) Hashtbl.t;
     eval'd_packages : (Qual_id.Prefix.t, 'a value) Hashtbl.t;
   }
+
+type 'a fun_data = {
+    fun_proc : 'a proc;
+    fun_frame_size : int;
+    fun_proc_data : 'a value array;
+    fun_params : int list;
+    fun_param_arg_pairs : (int * 'a value) list;
+  }
+
+type 'a arg_result =
+  | Exact of (int * 'a) list
+  | Too_few of 'a partial_app
+  | Too_many of (int * 'a) list * 'a list
 
 let create io rt =
   { eval'd_packages = rt
@@ -85,10 +98,7 @@ let foreign ~arity f =
   let rec helper acc = function
     | 0 -> []
     | n -> acc :: helper (acc + 1) (n - 1)
-  in
-  { arity
-  ; params = helper 0 arity
-  ; f }
+  in { arity; params = helper 0 arity; f }
 
 let eval_operand frame = function
   | Asm.Lit (Literal.Char c) -> `Char c
@@ -104,6 +114,106 @@ let bump_ip frame =
 let break frame label =
   frame.block <- Map.find_exn frame.proc.Asm.blocks label;
   frame.ip <- 0
+
+(** Unpack a value into a function *)
+let to_function file value =
+  match value with
+  | `Box { tag; data } when tag = Ir.function_tag ->
+     begin match data.(0) with
+     | `Int idx ->
+        let proc = Map.find_exn file.Asm.procs idx in
+        { fun_proc = Emmeline_proc proc
+        ; fun_frame_size = proc.Asm.frame_size
+        ; fun_proc_data = data
+        ; fun_params = proc.Asm.params
+        ; fun_param_arg_pairs = [] }
+     | _ -> failwith "Expected function pointer"
+     end
+  | `Foreign { params; f; arity } ->
+     { fun_proc = OCaml_proc f
+     ; fun_frame_size = arity
+     ; fun_proc_data = [||]
+     ; fun_params = params
+     ; fun_param_arg_pairs = [] }
+  | `Partial_app { proc
+                 ; frame_size
+                 ; closure
+                 ; remaining_params
+                 ; param_arg_pairs } ->
+     { fun_proc = proc
+     ; fun_frame_size = frame_size
+     ; fun_proc_data = closure
+     ; fun_params = remaining_params
+     ; fun_param_arg_pairs = param_arg_pairs }
+  | _ -> failwith "Type error: Expected function"
+
+let rec load_params fun_data param_arg_pairs params args =
+  (* param_arg_pairs is the accumulated value *)
+  match params, args with
+  | [], [] -> Exact param_arg_pairs
+  | param :: params, arg :: args ->
+     load_params fun_data ((param, arg) :: param_arg_pairs) params args
+  | params, [] ->
+     (* More parameters than arguments *)
+     Too_few
+       { proc = fun_data.fun_proc
+       ; frame_size = fun_data.fun_frame_size
+       ; closure = fun_data.fun_proc_data
+       ; remaining_params = params
+       ; param_arg_pairs }
+  | [], args ->
+     (* More arguments than parameters *)
+     Too_many(param_arg_pairs, args)
+
+let is_initialized = function
+  | `Uninitialized -> false
+  | _ -> true
+
+let rec tail_call t file frame fun_data args =
+  let { fun_proc = proc
+      ; fun_frame_size = frame_size
+      ; fun_proc_data = proc_data
+      ; fun_params = params
+      ; fun_param_arg_pairs = param_arg_pairs } = fun_data in
+  let execute param_arg_pairs =
+    match proc with
+    | Emmeline_proc proc ->
+       if Array.length frame.data < frame_size then (
+         frame.data <- Array.create ~len:frame_size `Uninitialized
+       ) else (
+         for i = frame_size to Array.length frame.data - 1 do
+           frame.data.(i) <- `Uninitialized
+         done
+       );
+       frame.proc <- proc;
+       frame.block <- Map.find_exn proc.Asm.blocks proc.Asm.entry;
+       frame.ip <- 0;
+       assert (not (is_initialized frame.return));
+       (* Load arguments into stack frame *)
+       List.iter param_arg_pairs ~f:(fun (param, arg) ->
+           frame.data.(param) <- arg
+         );
+       (* Load environment into stack frame *)
+       List.iteri proc.Asm.free_vars ~f:(fun i addr ->
+           frame.data.(addr) <- proc_data.(i + 1)
+         )
+    | OCaml_proc proc ->
+       let data = Array.create ~len:frame_size `Uninitialized in
+       (* Load arguments into stack frame *)
+       List.iter param_arg_pairs ~f:(fun (param, arg) ->
+           data.(param) <- arg
+         );
+       frame.return <- proc data
+  in
+  match load_params fun_data param_arg_pairs params args with
+  | Exact param_arg_pairs ->
+     execute param_arg_pairs
+  | Too_few partial_app ->
+     frame.return <- `Partial_app partial_app
+  | Too_many(param_arg_pairs, args) ->
+     execute param_arg_pairs;
+     let f = to_function file frame.return in
+     tail_call t file frame f args
 
 let rec eval_instr t file frame =
   match Queue.get frame.block.Asm.instrs frame.ip with
@@ -126,7 +236,8 @@ let rec eval_instr t file frame =
      let f = eval_operand frame f in
      let arg = eval_operand frame arg in
      let args = List.map ~f:(eval_operand frame) args in
-     frame.data.(dest) <- apply_function t file f (arg::args);
+     let f = to_function file f in
+     frame.data.(dest) <- apply_function t file f (arg :: args);
      bump_ip frame
   | Asm.Deref(dest, r) ->
      begin match eval_operand frame r with
@@ -169,6 +280,12 @@ let rec eval_instr t file frame =
      | _ -> failwith "Type error"
      end;
      bump_ip frame
+  | Asm.Tail_call(f, arg, args) ->
+     let f = eval_operand frame f in
+     let arg = eval_operand frame arg in
+     let args = List.map ~f:(eval_operand frame) args in
+     let f = to_function file f in
+     tail_call t file frame f (arg :: args)
   | Asm.Break label ->
      break frame label
   | Asm.Fail -> failwith "Pattern match failure"
@@ -189,38 +306,26 @@ let rec eval_instr t file frame =
      frame.data.(dest) <- Hashtbl.find_exn t.foreign_values key;
      bump_ip frame
 
-and apply_function t file value args =
-  let proc, frame_size, proc_data, params, param_arg_pairs =
-    match value with
-    | `Box { tag; data } when tag = Ir.function_tag ->
-       begin match data.(0) with
-       | `Int idx ->
-          let proc = Map.find_exn file.Asm.procs idx in
-          Emmeline_proc proc, proc.Asm.frame_size, data, proc.Asm.params, []
-       | _ -> failwith "Expected function pointer"
-       end
-    | `Foreign { params; f; arity } -> OCaml_proc f, arity, [||], params, []
-    | `Partial_app { proc
-                   ; frame_size
-                   ; closure
-                   ; remaining_params
-                   ; param_arg_pairs } ->
-       proc, frame_size, closure, remaining_params, param_arg_pairs
-    | _ -> failwith "Type error: Expected function" in
+and apply_function t file fun_data args =
+  let { fun_proc = proc
+      ; fun_frame_size = frame_size
+      ; fun_proc_data = proc_data
+      ; fun_params = params
+      ; fun_param_arg_pairs = param_arg_pairs } = fun_data in
   let execute param_arg_pairs =
-    let data = Array.create ~len:frame_size `Uninitialized in
-    (* Load arguments into stack frame *)
-    List.iter param_arg_pairs ~f:(fun (param, arg) ->
-        data.(param) <- arg
-      );
     match proc with
     | Emmeline_proc proc ->
+       let data = Array.create ~len:frame_size `Uninitialized in
        let frame =
          { data = data
          ; proc
          ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
          ; ip = 0
          ; return = `Uninitialized } in
+       (* Load arguments into stack frame *)
+       List.iter param_arg_pairs ~f:(fun (param, arg) ->
+           frame.data.(param) <- arg
+         );
        (* Load environment into stack frame *)
        List.iteri proc.Asm.free_vars ~f:(fun i addr ->
            frame.data.(addr) <- proc_data.(i + 1)
@@ -232,25 +337,20 @@ and apply_function t file value args =
             loop ()
          | _ -> frame.return
        in loop ()
-    | OCaml_proc proc -> proc data in
-  let rec load_params param_arg_pairs params args =
-    (* param_arg_pairs is the accumulated value *)
-    match params, args with
-    | [], [] -> execute param_arg_pairs
-    | param :: params, arg :: args ->
-       load_params ((param, arg) :: param_arg_pairs) params args
-    | params, [] ->
-       (* More parameters than arguments *)
-       `Partial_app
-         { proc
-         ; frame_size
-         ; closure = proc_data
-         ; remaining_params = params
-         ; param_arg_pairs }
-    | [], args ->
-       (* More arguments than parameters *)
-       apply_function t file (execute param_arg_pairs) args
-  in load_params param_arg_pairs params args
+    | OCaml_proc proc ->
+       let data = Array.create ~len:frame_size `Uninitialized in
+       (* Load arguments into stack frame *)
+       List.iter param_arg_pairs ~f:(fun (param, arg) ->
+           data.(param) <- arg
+         );
+       proc data
+  in
+  match load_params fun_data param_arg_pairs params args with
+  | Exact param_arg_pairs -> execute param_arg_pairs
+  | Too_few partial_app -> `Partial_app partial_app
+  | Too_many(param_arg_pairs, args) ->
+     let f = to_function file (execute param_arg_pairs) in
+     apply_function t file f args
 
 let eval t file =
   let proc = file.Asm.main in

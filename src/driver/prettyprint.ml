@@ -413,6 +413,12 @@ module Asm = struct
        Buffer.add_string pp.buffer (Int.to_string tag)
     | Asm.Tag(dest, op) ->
        print_instr_args pp "tag" dest [op]
+    | Asm.Tail_call(f, arg, args) ->
+       Buffer.add_string pp.buffer "tail_call";
+       print_operand pp f;
+       Buffer.add_char pp.buffer '(';
+       print_comma_sep print_operand pp (arg::args);
+       Buffer.add_char pp.buffer ')';
     | Asm.Break label ->
        Buffer.add_string pp.buffer "break ";
        print_label pp label

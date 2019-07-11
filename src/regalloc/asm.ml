@@ -25,6 +25,7 @@ type instr =
   | Set_field of operand * int * operand
   | Set_tag of operand * int
   | Tag of address * operand
+  | Tail_call of operand * operand * operand list
   | Break of Ir.Label.t
   | Fail
   | Return of operand
