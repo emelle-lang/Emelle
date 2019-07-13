@@ -1,4 +1,4 @@
-(* Copyright (C) 2019 TheAspiringHacker.
+(* Copyright (C) 2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -57,15 +57,15 @@ let handle_ending_regs ctx regs =
     )
 
 let handle_instr ctx instr =
-  let open Result.Monad_infix in
-  handle_ending_regs ctx instr.Ssa2.ending_regs >>| fun () ->
+  let open Result.Let_syntax in
+  let%map () = handle_ending_regs ctx instr.Ssa2.ending_regs in
   ignore (Option.map ~f:(fun dest -> alloc_reg ctx dest) instr.Ssa2.dest)
 
 let handle_instrs ctx =
   List.fold_result ~init:() ~f:(fun () instr -> handle_instr ctx instr)
 
 let rec handle_block ctx proc label =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   match Map.find proc.Ssa2.blocks label with
   | None -> Message.unreachable "Unknown block"
   | Some block ->
@@ -95,8 +95,8 @@ let rec handle_block ctx proc label =
            List.iter block.Ssa2.params ~f:(fun reg_param ->
                alloc_reg ctx reg_param
              );
-           handle_instrs ctx block.Ssa2.instrs >>= fun () ->
-           handle_ending_regs ctx block.Ssa2.ending_at_jump >>= fun () ->
+           let%bind () = handle_instrs ctx block.Ssa2.instrs in
+           let%bind () = handle_ending_regs ctx block.Ssa2.ending_at_jump in
            let succs = Ssa.successors block.Ssa2.jump in
            List.fold_result succs ~init:() ~f:(fun () label ->
                (* Use a physically distinct state *)
@@ -105,7 +105,7 @@ let rec handle_block ctx proc label =
                handle_block ctx proc label)
 
 let handle_proc proc =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   let ctx =
     { color_gen = 0
     ; coloring = Hashtbl.create (module Ir.Register)
@@ -118,17 +118,16 @@ let handle_proc proc =
   List.iter proc.Ssa2.params ~f:(fun reg -> alloc_reg ctx reg);
   (* Perform register allocation on entry block; blocks that are unreachable
      will not be visited. *)
-  handle_block ctx proc proc.Ssa2.entry >>| fun () ->
+  let%map () = handle_block ctx proc proc.Ssa2.entry in
   { map = ctx.coloring; frame_size = !(ctx.frame_size) }
 
 let handle_file package =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   Map.fold package.Ssa2.procs ~init:(Ok (Map.empty (module Int)))
     ~f:(fun ~key ~data acc ->
-      acc >>= fun map ->
-      handle_proc data >>| fun coloring ->
+      let%bind map = acc in
+      let%map coloring = handle_proc data in
       Map.set map ~key ~data:coloring
     ) >>= fun colorings ->
-  handle_proc package.Ssa2.main
-  >>| fun main's_coloring ->
+  let%map main's_coloring = handle_proc package.Ssa2.main in
   { colorings; main's_coloring }

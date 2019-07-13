@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type register = Ir.Register.t
@@ -24,7 +25,11 @@ type decision_tree =
     (** A switch holds the scrutinee occurrence and a map from constructors to
         decision trees, and a default decision tree. *)
 
-type 'a opcode =
+type 'a rec_def =
+  | Rec_box of int * operand list
+  | Rec_fun of 'a proc
+
+and 'a opcode =
   | Assign of operand * operand
   | Box of int * operand list
   | Call of operand * operand * operand list
@@ -42,9 +47,9 @@ type 'a opcode =
 and 'a join_point = register list * 'a instr
 
 and 'a instr' =
-  | Break of operand
+  | Break of 'a opcode
   | Let of register * 'a opcode * 'a instr
-  | Let_rec of (register * 'a opcode) list * 'a instr
+  | Let_rec of (register * 'a rec_def) list * 'a instr
 
 and 'a instr = {
     instr : 'a instr';
@@ -56,9 +61,11 @@ and 'a proc = {
     params : register list;
     body : 'a instr;
     reg_gen : Ir.Register.gen;
+    return : register;
   }
 
 type 'a file = {
     top_instr : 'a instr;
     reg_gen : Ir.Register.gen;
+    top_return : register;
   }

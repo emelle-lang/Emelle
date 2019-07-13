@@ -1,8 +1,9 @@
-(* Copyright (C) 2019 TheAspiringHacker.
+(* Copyright (C) 2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 (** This module replaces virtual registers with stack offsets and eliminates
     basic block parameters. *)
 
@@ -127,10 +128,9 @@ let rec compile_basic_block new_blocks coloring proc label =
           | Ssa.Fail ->
              Queue.enqueue instrs (Asm.Fail);
              Ok new_blocks
-          | Ssa.Return operand ->
-             let%map operand = compile_operand coloring operand in
-             Queue.enqueue instrs (Asm.Return operand);
-             new_blocks
+          | Ssa.Return ->
+             Queue.enqueue instrs Asm.Return;
+             Ok new_blocks
           | Ssa.Switch(scrut, cases, else_case) ->
              let%bind scrut = compile_operand coloring scrut in
              Queue.enqueue instrs (Asm.Switch(scrut, cases, else_case));
@@ -155,22 +155,26 @@ let compile_proc coloring proc =
     List.fold_right proc.Ssa2.free_vars ~init:(Ok []) ~f:(fun reg acc ->
         let%bind list = acc in
         match Hashtbl.find coloring.Color.map reg with
-        | Some color -> Ok (color::list)
+        | Some color -> Ok (color :: list)
         | None -> Message.unreachable "compile_proc free_vars"
       ) in
   let%bind params =
     List.fold_right proc.Ssa2.params ~init:(Ok []) ~f:(fun reg acc ->
         let%bind list = acc in
         match Hashtbl.find coloring.Color.map reg with
-        | Some color -> Ok (color::list)
+        | Some color -> Ok (color :: list)
         | None -> Message.unreachable "compile_proc params"
       ) in
-  let%map blocks, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
-  { Asm.free_vars
-  ; params
-  ; entry = proc.Ssa2.entry
-  ; blocks
-  ; frame_size = coloring.Color.frame_size }
+  let%bind blocks, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
+  match Hashtbl.find coloring.Color.map proc.Ssa2.return with
+  | Some color ->
+     Ok { Asm.free_vars
+        ; params
+        ; entry = proc.Ssa2.entry
+        ; blocks
+        ; frame_size = coloring.Color.frame_size
+        ; return = color }
+  | None -> Message.unreachable "compile_proc params"
 
 let compile { Color.colorings; main's_coloring } package =
   let open Result.Let_syntax in

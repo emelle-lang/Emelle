@@ -1,8 +1,9 @@
-(* Copyright (C) 2019 TheAspiringHacker.
+(* Copyright (C) 2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 let operands_of_opcode = function
@@ -23,7 +24,7 @@ let operands_of_opcode = function
 let operands_of_jump = function
   | Ssa.Break(_, args) -> args
   | Ssa.Fail -> []
-  | Ssa.Return operand -> [operand]
+  | Ssa.Return -> []
   | Ssa.Switch(scrut, _, _) -> [scrut]
 
 let regs_of_opcode opcode =
@@ -71,15 +72,16 @@ let handle_instrs live_regs instrs =
 let find_block proc idx = Map.find proc.Ssa.blocks idx
 
 let rec handle_block live_regs blocks proc label =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   match find_block proc label with
   | Some block ->
      let succs =
        Set.of_list (module Ir.Label) (Ssa.successors block.Ssa.jump) in
-     Set.fold succs ~init:(Ok (blocks, live_regs)) ~f:(fun acc label ->
-         acc >>= fun (blocks, live_regs) ->
-         handle_block live_regs blocks proc label
-       ) >>| fun (blocks, live_regs) ->
+     let%map (blocks, live_regs) =
+       Set.fold succs ~init:(Ok (blocks, live_regs)) ~f:(fun acc label ->
+           let%bind (blocks, live_regs) = acc in
+           handle_block live_regs blocks proc label
+         ) in
      let live_at_jump =
        Set.of_list (module Ir.Register) (regs_of_jump block.Ssa.jump) in
      let ending_at_jump = Set.diff live_at_jump live_regs in
@@ -100,24 +102,25 @@ let rec handle_block live_regs blocks proc label =
   | None -> Message.unreachable "Unknown label"
 
 let handle_proc proc =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   let live_regs = Set.empty (module Ir.Register) in
   let map = Map.empty (module Ir.Label) in
-  handle_block live_regs map proc proc.Ssa.entry
-  >>| fun (blocks, _) ->
+  let%map blocks, _ = handle_block live_regs map proc proc.Ssa.entry in
   { Ssa2.free_vars = proc.Ssa.free_vars
   ; params = proc.Ssa.params
   ; entry = proc.Ssa.entry
   ; blocks = blocks
-  ; before_return = proc.Ssa.before_return }
+  ; before_returns = proc.Ssa.before_returns
+  ; return = proc.Ssa.return }
 
 let handle_file { Ssa.procs; main } =
-  let open Result.Monad_infix in
-  Map.fold procs ~init:(Ok (Map.empty (module Int)))
-    ~f:(fun ~key:id ~data:proc acc ->
-      acc >>= fun map ->
-      handle_proc proc >>| fun proc ->
-      Map.set map ~key:id ~data:proc
-    ) >>= fun procs ->
-  handle_proc main >>| fun main ->
+  let open Result.Let_syntax in
+  let%bind procs =
+    Map.fold procs ~init:(Ok (Map.empty (module Int)))
+      ~f:(fun ~key:id ~data:proc acc ->
+        let%bind map = acc in
+        let%map proc = handle_proc proc in
+        Map.set map ~key:id ~data:proc
+      ) in
+  let%map main = handle_proc main in
   { Ssa2.procs; main }

@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type t =
@@ -204,9 +205,8 @@ module Ssa = struct
        Buffer.add_char pp.buffer ')'
     | Ssa.Fail ->
        Buffer.add_string pp.buffer "panic"
-    | Ssa.Return operand ->
-       Buffer.add_string pp.buffer "return ";
-       print_operand pp operand
+    | Ssa.Return ->
+       Buffer.add_string pp.buffer "return "
     | Ssa.Switch(scrut, cases, else_label) ->
        Buffer.add_string pp.buffer "switch ";
        print_operand pp scrut;
@@ -310,7 +310,8 @@ module Ssa = struct
       ) instrs;
     print_jump pp jump
 
-  let print_proc pp Ssa.{ free_vars; params; blocks; before_return; _ } =
+  let print_proc pp
+        Ssa.{ free_vars; params; blocks; before_returns; return; _ } =
     Buffer.add_char pp.buffer '[';
     print_comma_sep print_reg pp free_vars;
     Buffer.add_char pp.buffer ']';
@@ -326,8 +327,11 @@ module Ssa = struct
               );
             newline pp
           ) blocks;
-        Buffer.add_string pp.buffer "before return: ";
-        print_label pp before_return;
+        Buffer.add_string pp.buffer "return register: ";
+        print_reg pp return;
+        newline pp;
+        Buffer.add_string pp.buffer "before returns: ";
+        print_comma_sep print_label pp before_returns;
       );
     newline pp
 
@@ -424,9 +428,8 @@ module Asm = struct
        print_label pp label
     | Asm.Fail ->
        Buffer.add_string pp.buffer "panic"
-    | Asm.Return retval ->
-       Buffer.add_string pp.buffer "return ";
-       print_operand pp retval
+    | Asm.Return ->
+       Buffer.add_string pp.buffer "return"
     | Asm.Switch(scrut, cases, else_case) ->
        Buffer.add_string pp.buffer "switch ";
        print_operand pp scrut;

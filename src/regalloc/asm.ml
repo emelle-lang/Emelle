@@ -1,8 +1,9 @@
-(* Copyright (C) 2019 TheAspiringHacker.
+(* Copyright (C) 2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type address = int
@@ -28,7 +29,7 @@ type instr =
   | Tail_call of operand * operand * operand list
   | Break of Ir.Label.t
   | Fail
-  | Return of operand
+  | Return
   | Switch of operand * (int * Ir.Label.t) list * Ir.Label.t
 
 type block = {
@@ -42,9 +43,10 @@ type proc = {
     entry : Ir.Label.t;
     blocks : (Ir.Label.t, block, Ir.Label.comparator_witness) Map.t;
     frame_size : int;
+    return : int;
   }
 
 type file = {
     procs : (int, proc, Int.comparator_witness) Map.t;
-    main : proc;
+    main : proc
   }

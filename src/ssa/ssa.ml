@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type operand = Anf.operand
@@ -12,7 +13,7 @@ type register = Ir.Register.t
 type jump =
   | Break of Ir.Label.t * operand list (** Break to a basic block *)
   | Fail (** Pattern match failure *)
-  | Return of operand
+  | Return
   | Switch of operand * (int * Ir.Label.t) list * Ir.Label.t
       (** The jump is dynamic *)
 
@@ -43,7 +44,9 @@ type proc = {
     params : Anf.register list;
     entry : Ir.Label.t;
     blocks : (Ir.Label.t, basic_block, Ir.Label.comparator_witness) Map.t;
-    before_return : Ir.Label.t;
+    before_returns : Ir.Label.t list;
+      (** The labels of the basic blocks that return *)
+    return : Anf.register;
   }
 
 type file = {
@@ -53,7 +56,7 @@ type file = {
 
 let successors = function
   | Break(label, _) -> [label]
-  | Return _ -> []
+  | Return -> []
   | Fail -> []
   | Switch(_, cases, else_case) ->
-     else_case::(List.map ~f:(fun (_, label) -> label) cases)
+     else_case :: (List.map ~f:(fun (_, label) -> label) cases)

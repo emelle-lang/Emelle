@@ -47,6 +47,7 @@ type 'a frame = {
     mutable block : Asm.block;
     mutable ip : int;
     mutable proc : Asm.proc;
+    mutable return_addr : int;
     mutable return : 'a value;
   }
 
@@ -188,7 +189,6 @@ let rec tail_call t file frame fun_data args =
        frame.proc <- proc;
        frame.block <- Map.find_exn proc.Asm.blocks proc.Asm.entry;
        frame.ip <- 0;
-       assert (not (is_initialized frame.return));
        (* Load arguments into stack frame *)
        List.iter param_arg_pairs ~f:(fun (param, arg) ->
            frame.data.(param) <- arg
@@ -289,8 +289,8 @@ let rec eval_instr t file frame =
   | Asm.Break label ->
      break frame label
   | Asm.Fail -> failwith "Pattern match failure"
-  | Asm.Return op ->
-     frame.return <- eval_operand frame op
+  | Asm.Return ->
+     frame.return <- frame.data.(frame.return_addr)
   | Asm.Switch(scrut, cases, else_case) ->
      let scrut = eval_operand frame scrut in
      begin match scrut with
@@ -321,7 +321,8 @@ and apply_function t file fun_data args =
          ; proc
          ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
          ; ip = 0
-         ; return = `Uninitialized } in
+         ; return = `Uninitialized
+         ; return_addr = proc.Asm.return } in
        (* Load arguments into stack frame *)
        List.iter param_arg_pairs ~f:(fun (param, arg) ->
            frame.data.(param) <- arg
@@ -359,7 +360,8 @@ let eval t file =
     ; proc
     ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
     ; ip = 0
-    ; return = `Uninitialized } in
+    ; return = `Uninitialized
+    ; return_addr = proc.Asm.return } in
   let rec loop () =
     match frame.return with
     | `Uninitialized ->

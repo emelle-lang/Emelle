@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 (** This transformation turns ANF join points, which are local to the case expr,
     into SSA basic blocks, which are local to the function. Here, the compiler
     compiles decision trees into switches, jumps, and basic block parameters. *)
@@ -22,13 +23,14 @@ type t = {
     reg_gen : Ir.Register.gen;
     instrs : Ssa.instr Queue.t;
     curr_block : Ir.Label.t;
+    dest : Ir.Register.t;
     jump_dest : jump_dest;
   }
 
 (** Helper record for organizational purposes *)
 type branch = {
     branch_idx : Ir.Label.t;
-    label : Ir.Label.t;
+    labels : Ir.Label.t list;
     block : Ssa.basic_block;
   }
 
@@ -44,7 +46,19 @@ let fresh_block ctx ~cont =
   ctx.blocks := Map.set !(ctx.blocks) ~key:idx ~data:block;
   (ret, block)
 
-let rec compile_decision_tree ctx instrs this_label branches =
+(** [compile_decision_tree ctx instrs this_label branches tree]
+
+    - ctx: The value that holds the state
+    - instrs: A queue of instructions for the current basic block being
+        generated
+    - this_label: The label of the current basic block being generated
+    - branches: An array of branches to jump to at the leaf nodes
+    - tree: The decision tree to compile *)
+let rec compile_decision_tree
+          (ctx : t)
+          (instrs : Ssa.instr Queue.t)
+          (this_label : Ir.Label.t)
+          (branches : branch array) =
   let open Result.Let_syntax in
   function
   | Anf.Deref(occ, dest, tree) ->
@@ -70,9 +84,9 @@ let rec compile_decision_tree ctx instrs this_label branches =
                    ) regs;
                  compile_decision_tree ctx case_instrs case_idx branches tree
                in
-               ( (case, case_idx)::list
+               ( (case, case_idx) :: list (* result *)
                , []
-               , Set.singleton (module Ir.Label) this_label
+               , Set.singleton (module Ir.Label) this_label (* predecessors *)
                , case_instrs
                , jump )
                end
@@ -86,7 +100,7 @@ let rec compile_decision_tree ctx instrs this_label branches =
            in
            ( else_idx
            , []
-           , Set.singleton (module Ir.Label) this_label
+           , Set.singleton (module Ir.Label) this_label (* predecessors *)
            , else_instrs
            , jump )
          )
@@ -96,8 +110,34 @@ type 'a rec_def =
   | Rec_box of int * Ir.Operand.t list
   | Rec_fun of 'a Anf.proc
 
-let rec compile_opcode ctx dest anf ~cont
-        : (Ir.Label.t * Ssa.jump, 'a Message.t) Result.t =
+let rec compile_join_points ctx join_points dest cont_jump_dest =
+  let open Result.Let_syntax in
+  List.fold_right join_points ~init:(Ok [])
+    ~f:(fun (reg_args, instr) acc ->
+      let%bind list = acc in
+      (* The basic block for the join point *)
+      let%map (branch_idx, labels), block =
+        fresh_block ctx ~cont:(fun branch_idx ->
+            let branch_instrs = Queue.create () in
+            let%map labels, jump =
+              compile_instr
+                { ctx with
+                  instrs = branch_instrs
+                ; curr_block = branch_idx
+                ; dest
+                ; jump_dest = cont_jump_dest }
+                instr in
+            ( (branch_idx, labels)
+            , reg_args
+            , Set.empty (module Ir.Label)
+            , branch_instrs
+            , jump )
+          )
+      in { branch_idx; labels; block } :: list
+    )
+
+and compile_opcode ctx dest anf ~cont
+        : (Ir.Label.t list * Ssa.jump, 'a Message.t) Result.t =
   let open Result.Let_syntax in
   match anf with
   | Anf.Assign(lval, rval) ->
@@ -115,42 +155,21 @@ let rec compile_opcode ctx dest anf ~cont
        fresh_block ctx ~cont:(fun confl_idx ->
            let confl_instrs = Queue.create () in
            let%bind branches =
-             List.fold_right join_points ~init:(Ok [])
-               ~f:(fun (reg_args, instr) acc ->
-                 let%bind list = acc in
-                 (* The basic block for the join point *)
-                 let%map (branch_idx, label), block =
-                   fresh_block ctx ~cont:(fun branch_idx ->
-                       let branch_instrs = Queue.create () in
-                       let%map label, jump =
-                         compile_instr
-                           { ctx with
-                             instrs = branch_instrs
-                           ; curr_block = branch_idx
-                           ; jump_dest = Label confl_idx }
-                           instr in
-                       ( (branch_idx, label)
-                       , reg_args
-                       , Set.empty (module Ir.Label)
-                       , branch_instrs
-                       , jump )
-                     )
-                 in { branch_idx; label; block }::list
-               ) in
+             compile_join_points ctx join_points dest (Label confl_idx) in
            let%bind jump_from_decision_tree =
              compile_decision_tree ctx ctx.instrs ctx.curr_block
                (Array.of_list branches) tree in
            let preds =
              List.fold branches ~init:(Set.empty (module Ir.Label))
-               ~f:(fun acc { label; _ } ->
-                 Set.add acc label
+               ~f:(fun acc { labels; _ } ->
+                 List.fold labels ~init:acc ~f:Set.add
                ) in
            (* Label of confluent block, jump of confluent block *)
            let%map label, jump =
              (* Compile the rest of the ANF in the confluent block *)
              cont { ctx with instrs = confl_instrs; curr_block = confl_idx } in
            ( (label, jump_from_decision_tree)
-           , [dest]
+           , []
            , preds
            , confl_instrs
            , jump )
@@ -185,9 +204,20 @@ let rec compile_opcode ctx dest anf ~cont
      cont ctx
 
 and compile_instr ctx anf
-    : (Ir.Label.t * Ssa.jump, 'a Message.t) Result.t =
+    : (Ir.Label.t list * Ssa.jump, 'a Message.t) Result.t =
   let open Result.Let_syntax in
   match anf.Anf.instr with
+  | Anf.Break(Anf.Case(tree, join_points)) ->
+     let%bind branches =
+       compile_join_points ctx join_points ctx.dest ctx.jump_dest in
+     let%map jump =
+       compile_decision_tree ctx ctx.instrs ctx.curr_block
+         (Array.of_list branches) tree in
+     let labels =
+       List.fold branches ~init:[] ~f:(fun acc { labels; _ } ->
+           List.append labels acc
+         )
+     in (labels, jump)
   | Anf.Let(reg, op, next) ->
      compile_opcode ctx reg op ~cont:(fun ctx ->
          compile_instr ctx next
@@ -200,43 +230,46 @@ and compile_instr ctx anf
            let%bind list = acc in
            let%map def, size =
              match def with
-             | Anf.Box(tag, list) ->
+             | Anf.Rec_box(tag, list) ->
                 Ok (Rec_box(tag, list), List.length list)
-             | Anf.Fun proc ->
+             | Anf.Rec_fun proc ->
                 Ok (Rec_fun proc, List.length proc.Anf.env + 1)
-             | _ -> Message.error anf.Anf.ann Message.Unsafe_let_rec in
+           in
            Queue.enqueue ctx.instrs (Ssa.Box_dummy(reg, size));
-           (reg, def)::list
+           (reg, def) :: list
          end in
      (* Now the list of bindings is reversed *)
-     List.fold_right bindings ~init:(Ok ()) ~f:(fun (reg, op) acc ->
-         let%bind () = acc in
-         let dest = Ir.Operand.Register reg in
-         match op with
-         | Rec_box(tag, list) ->
-            List.iteri list ~f:(fun i operand ->
-                Queue.enqueue ctx.instrs (Ssa.Set_field(dest, i, operand))
-              );
-            Ok (Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, tag)))
-         | Rec_fun proc ->
-            let%map proc' = compile_proc ctx proc in
-            let idx = !(ctx.proc_gen) in
-            ctx.proc_gen := idx + 1;
-            let procs = Map.set !(ctx.procs) ~key:idx ~data:proc' in
-            ctx.procs := procs;
-            Queue.enqueue ctx.instrs
-              (Ssa.Set_field(dest, 0, Ir.Operand.Lit (Literal.Int idx)));
-            List.iteri proc.Anf.env ~f:(fun i (_, operand) ->
-                Queue.enqueue ctx.instrs (Ssa.Set_field(dest, i + 1, operand))
-              );
-            Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, Ir.function_tag))
-       ) >>= fun () ->
+     let%bind () =
+       List.fold_right bindings ~init:(Ok ()) ~f:(fun (reg, op) acc ->
+           let%bind () = acc in
+           let dest = Ir.Operand.Register reg in
+           match op with
+           | Rec_box(tag, list) ->
+              List.iteri list ~f:(fun i operand ->
+                  Queue.enqueue ctx.instrs (Ssa.Set_field(dest, i, operand))
+                );
+              Ok (Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, tag)))
+           | Rec_fun proc ->
+              let%map proc' = compile_proc ctx proc in
+              let idx = !(ctx.proc_gen) in
+              ctx.proc_gen := idx + 1;
+              let procs = Map.set !(ctx.procs) ~key:idx ~data:proc' in
+              ctx.procs := procs;
+              Queue.enqueue ctx.instrs
+                (Ssa.Set_field(dest, 0, Ir.Operand.Lit (Literal.Int idx)));
+              List.iteri proc.Anf.env ~f:(fun i (_, operand) ->
+                  Queue.enqueue ctx.instrs (Ssa.Set_field(dest, i + 1, operand))
+                );
+              Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, Ir.function_tag))
+         ) in
      compile_instr ctx next
-  | Anf.Break operand ->
-     Ok ( ctx.curr_block
-        , match ctx.jump_dest with
-          | Label label -> Ssa.Break(label, [operand])
-          | Return -> Ssa.Return operand )
+  | Anf.Break op ->
+     compile_opcode ctx ctx.dest op ~cont:(fun ctx ->
+         Ok ( [ctx.curr_block]
+            , match ctx.jump_dest with
+              | Label label -> Ssa.Break(label, [])
+              | Return -> Ssa.Return )
+       )
 
 and compile_proc ctx proc =
   let open Result.Let_syntax in
@@ -245,14 +278,16 @@ and compile_proc ctx proc =
   let label_gen = Ir.Label.create_gen () in
   let entry_label = Ir.Label.fresh label_gen in
   let state =
-    { ctx with
-      blocks
+    { procs = ctx.procs
+    ; proc_gen = ctx.proc_gen
+    ; blocks
     ; instrs
     ; label_gen
     ; reg_gen = proc.Anf.reg_gen
     ; curr_block = entry_label
+    ; dest = proc.Anf.return
     ; jump_dest = Return } in
-  let%map before_return, jump = compile_instr state proc.Anf.body in
+  let%map before_returns, jump = compile_instr state proc.Anf.body in
   let entry_block =
     { Ssa.preds = Set.empty (module Ir.Label)
     ; params = []
@@ -262,7 +297,8 @@ and compile_proc ctx proc =
   ; params = proc.Anf.params
   ; blocks = Map.set !blocks ~key:entry_label ~data:entry_block
   ; entry = entry_label
-  ; before_return }
+  ; before_returns
+  ; return = proc.Anf.return }
 
 let compile_file anf =
   let open Result.Let_syntax in
@@ -276,8 +312,9 @@ let compile_file anf =
     ; label_gen
     ; reg_gen = anf.Anf.reg_gen
     ; curr_block = entry_label
-    ; jump_dest = Return } in
-  let%map before_return, jump = compile_instr ctx anf.Anf.top_instr in
+    ; jump_dest = Return
+    ; dest = anf.Anf.top_return } in
+  let%map before_returns, jump = compile_instr ctx anf.Anf.top_instr in
   let entry_block =
     { Ssa.preds = Set.empty (module Ir.Label)
     ; params = []
@@ -288,6 +325,7 @@ let compile_file anf =
     ; params = []
     ; blocks = Map.set !(ctx.blocks) ~key:entry_label ~data:entry_block
     ; entry = entry_label
-    ; before_return } in
+    ; before_returns
+    ; return = anf.Anf.top_return } in
   { Ssa.procs = !(ctx.procs)
   ; main = main_proc }
