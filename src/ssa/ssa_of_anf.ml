@@ -106,10 +106,6 @@ let rec compile_decision_tree
          )
      in Ssa.Switch(Ir.Operand.Register tag_reg, cases, else_block_idx)
 
-type 'a rec_def =
-  | Rec_box of int * Ir.Operand.t list
-  | Rec_fun of 'a Anf.proc
-
 let rec compile_join_points ctx join_points dest cont_jump_dest =
   let open Result.Let_syntax in
   List.fold_right join_points ~init:(Ok [])
@@ -224,32 +220,24 @@ and compile_instr ctx anf
        )
   | Anf.Let_rec(bindings, next) ->
      (* Initialize registers with dummy allocations *)
-     let%bind bindings =
-       List.fold_left bindings ~init:(Ok []) ~f:begin
-           fun acc (reg, def) ->
-           let%bind list = acc in
-           let%map def, size =
-             match def with
-             | Anf.Rec_box(tag, list) ->
-                Ok (Rec_box(tag, list), List.length list)
-             | Anf.Rec_fun proc ->
-                Ok (Rec_fun proc, List.length proc.Anf.env + 1)
-           in
-           Queue.enqueue ctx.instrs (Ssa.Box_dummy(reg, size));
-           (reg, def) :: list
-         end in
-     (* Now the list of bindings is reversed *)
+     List.iter bindings ~f:(fun (reg, def) ->
+         let size =
+           match def with
+           | Anf.Rec_box(_, list) -> List.length list
+           | Anf.Rec_fun proc -> List.length proc.Anf.env + 1
+         in
+         Queue.enqueue ctx.instrs (Ssa.Box_dummy(reg, size))
+       );
      let%bind () =
-       List.fold_right bindings ~init:(Ok ()) ~f:(fun (reg, op) acc ->
-           let%bind () = acc in
+       List.fold_result bindings ~init:() ~f:(fun () (reg, op) ->
            let dest = Ir.Operand.Register reg in
            match op with
-           | Rec_box(tag, list) ->
+           | Anf.Rec_box(tag, list) ->
               List.iteri list ~f:(fun i operand ->
                   Queue.enqueue ctx.instrs (Ssa.Set_field(dest, i, operand))
                 );
               Ok (Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, tag)))
-           | Rec_fun proc ->
+           | Anf.Rec_fun proc ->
               let%map proc' = compile_proc ctx proc in
               let idx = !(ctx.proc_gen) in
               ctx.proc_gen := idx + 1;

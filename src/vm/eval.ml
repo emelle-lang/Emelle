@@ -176,7 +176,7 @@ let rec tail_call t file frame fun_data args =
       ; fun_proc_data = proc_data
       ; fun_params = params
       ; fun_param_arg_pairs = param_arg_pairs } = fun_data in
-  let execute param_arg_pairs =
+  let tail_execute param_arg_pairs =
     match proc with
     | Emmeline_proc proc ->
        if Array.length frame.data < frame_size then (
@@ -189,6 +189,7 @@ let rec tail_call t file frame fun_data args =
        frame.proc <- proc;
        frame.block <- Map.find_exn proc.Asm.blocks proc.Asm.entry;
        frame.ip <- 0;
+       frame.return_addr <- proc.Asm.return;
        (* Load arguments into stack frame *)
        List.iter param_arg_pairs ~f:(fun (param, arg) ->
            frame.data.(param) <- arg
@@ -207,15 +208,16 @@ let rec tail_call t file frame fun_data args =
   in
   match load_params fun_data param_arg_pairs params args with
   | Exact param_arg_pairs ->
-     execute param_arg_pairs
+     tail_execute param_arg_pairs
   | Too_few partial_app ->
      frame.return <- `Partial_app partial_app
   | Too_many(param_arg_pairs, args) ->
-     execute param_arg_pairs;
-     let f = to_function file frame.return in
-     tail_call t file frame f args
+     let f =
+       execute_function t file proc proc_data frame_size param_arg_pairs
+       |> to_function file
+     in tail_call t file frame f args
 
-let rec eval_instr t file frame =
+and eval_instr t file frame =
   match Queue.get frame.block.Asm.instrs frame.ip with
   | Asm.Assign(dest, lval, rval) ->
      begin match eval_operand frame lval with
@@ -306,52 +308,56 @@ let rec eval_instr t file frame =
      frame.data.(dest) <- Hashtbl.find_exn t.foreign_values key;
      bump_ip frame
 
+(* Helper function used both by tail_call and apply_function *)
+and execute_function t file proc proc_data frame_size param_arg_pairs =
+  match proc with
+  | Emmeline_proc proc ->
+     let data = Array.create ~len:frame_size `Uninitialized in
+     let frame =
+       { data = data
+       ; proc
+       ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
+       ; ip = 0
+       ; return = `Uninitialized
+       ; return_addr = proc.Asm.return } in
+     (* Load arguments into stack frame *)
+     List.iter param_arg_pairs ~f:(fun (param, arg) ->
+         frame.data.(param) <- arg
+       );
+     (* Load environment into stack frame *)
+     List.iteri proc.Asm.free_vars ~f:(fun i addr ->
+         frame.data.(addr) <- proc_data.(i + 1)
+       );
+     let rec loop () =
+       match frame.return with
+       | `Uninitialized ->
+          eval_instr t file frame;
+          loop ()
+       | _ -> frame.return
+     in loop ()
+  | OCaml_proc proc ->
+     let data = Array.create ~len:frame_size `Uninitialized in
+     (* Load arguments into stack frame *)
+     List.iter param_arg_pairs ~f:(fun (param, arg) ->
+         data.(param) <- arg
+       );
+     proc data
+
 and apply_function t file fun_data args =
   let { fun_proc = proc
       ; fun_frame_size = frame_size
       ; fun_proc_data = proc_data
       ; fun_params = params
       ; fun_param_arg_pairs = param_arg_pairs } = fun_data in
-  let execute param_arg_pairs =
-    match proc with
-    | Emmeline_proc proc ->
-       let data = Array.create ~len:frame_size `Uninitialized in
-       let frame =
-         { data = data
-         ; proc
-         ; block = Map.find_exn proc.Asm.blocks proc.Asm.entry
-         ; ip = 0
-         ; return = `Uninitialized
-         ; return_addr = proc.Asm.return } in
-       (* Load arguments into stack frame *)
-       List.iter param_arg_pairs ~f:(fun (param, arg) ->
-           frame.data.(param) <- arg
-         );
-       (* Load environment into stack frame *)
-       List.iteri proc.Asm.free_vars ~f:(fun i addr ->
-           frame.data.(addr) <- proc_data.(i + 1)
-         );
-       let rec loop () =
-         match frame.return with
-         | `Uninitialized ->
-            eval_instr t file frame;
-            loop ()
-         | _ -> frame.return
-       in loop ()
-    | OCaml_proc proc ->
-       let data = Array.create ~len:frame_size `Uninitialized in
-       (* Load arguments into stack frame *)
-       List.iter param_arg_pairs ~f:(fun (param, arg) ->
-           data.(param) <- arg
-         );
-       proc data
-  in
   match load_params fun_data param_arg_pairs params args with
-  | Exact param_arg_pairs -> execute param_arg_pairs
+  | Exact param_arg_pairs ->
+     execute_function t file proc proc_data frame_size param_arg_pairs
   | Too_few partial_app -> `Partial_app partial_app
   | Too_many(param_arg_pairs, args) ->
-     let f = to_function file (execute param_arg_pairs) in
-     apply_function t file f args
+     let f =
+       execute_function t file proc proc_data frame_size param_arg_pairs
+       |> to_function file
+     in apply_function t file f args
 
 let eval t file =
   let proc = file.Asm.main in

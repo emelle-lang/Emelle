@@ -48,6 +48,28 @@ let rec free_var self id =
          Error (Message.Unreachable_error "Lower free_var")
     )
 
+type 'a constr_instr =
+  | Nullary_constr
+  | Nonnullary_constr of 'a Anf.proc
+
+let compile_constr ann tag size =
+  if size = 0 then
+    Nullary_constr
+  else
+    let reg_gen = Ir.Register.create_gen () in
+    let params = Ir.Register.gen_regs reg_gen [] size in
+    let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
+    let constr_return = Ir.Register.fresh reg_gen in
+    let proc =
+      { Anf.env = []
+      ; params
+      ; body =
+          { Anf.ann
+          ; instr = Anf.Break(Anf.Box(tag, vars)) }
+      ; return = constr_return
+      ; reg_gen }
+    in Nonnullary_constr proc
+
 (** Combine statically known nested unary functions into multi-argument procs *)
 let rec proc_of_typedtree self params ann id body =
   let open Result.Let_syntax in
@@ -242,22 +264,11 @@ and compile_letrec self ann bindings ~cont =
         | `Ok -> Ok ((var, rhs) :: list)
       ) in
   let rec helper bindings = function
-    | (var, { Typedtree.expr = Constr(tag, 0); _ }) :: rest ->
-       helper ((var, Anf.Rec_box(tag, [])) :: bindings) rest
     | (var, { Typedtree.expr = Constr(tag, size); _ }) :: rest ->
-       let reg_gen = Ir.Register.create_gen () in
-       let params = Ir.Register.gen_regs reg_gen [] size in
-       let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
-       let constr_return = Ir.Register.fresh reg_gen in
-       let proc =
-         { Anf.env = []
-         ; params
-         ; body =
-             { Anf.ann
-             ; instr = Anf.Break(Anf.Box(tag, vars)) }
-         ; return = constr_return
-         ; reg_gen } in
-       helper ((var, Anf.Rec_fun proc) :: bindings) rest
+       let op = match compile_constr ann tag size with
+         | Nullary_constr -> Anf.Rec_box(tag, [])
+         | Nonnullary_constr proc -> Anf.Rec_fun proc
+       in helper ((var, op) :: bindings) rest
     | (var, { Typedtree.expr = Lam(reg, body); _ }) :: rest ->
        let self = create (Some self) in
        let%bind proc = proc_of_typedtree self [] ann reg body in
@@ -271,28 +282,15 @@ and compile_letrec self ann bindings ~cont =
 and operand_of_typedtree self typedtree ~cont =
   let open Result.Let_syntax in
   match typedtree.Typedtree.expr with
-  | Typedtree.Constr(tag, 0) ->
-     let var = fresh_register self in
-     let%map body = cont (Ir.Operand.Register var) in
-     { Anf.ann = typedtree.Typedtree.ann
-     ; instr = Anf.Let(var, Anf.Box(tag, []), body) }
   | Typedtree.Constr(tag, size) ->
-     let reg_gen = Ir.Register.create_gen () in
-     let params = Ir.Register.gen_regs reg_gen [] size in
-     let vars = List.map ~f:(fun reg -> Ir.Operand.Register reg) params in
-     let constr_return = Ir.Register.fresh reg_gen in
-     let proc =
-       { Anf.env = []
-       ; params
-       ; body =
-           { Anf.ann = typedtree.Typedtree.ann
-           ; instr = Anf.Break(Anf.Box(tag, vars)) }
-       ; return = constr_return
-       ; reg_gen } in
      let var = fresh_register self in
      let%map body = cont (Ir.Operand.Register var) in
+     let op = match compile_constr typedtree.Typedtree.ann tag size with
+       | Nullary_constr -> Anf.Box(tag, [])
+       | Nonnullary_constr proc -> Anf.Fun proc
+     in
      { Anf.ann = typedtree.Typedtree.ann
-     ; instr = Anf.Let(var, Anf.Fun proc, body) }
+     ; instr = Anf.Let(var, op, body) }
   | Typedtree.Extern_var(pkg, offset) ->
      let package = fresh_register self in
      let var = fresh_register self in
