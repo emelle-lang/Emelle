@@ -16,6 +16,7 @@ type jump =
   | Return
   | Switch of operand * (int * Ir.Label.t) list * Ir.Label.t
       (** The jump is dynamic *)
+  | Tail_call of operand * operand * operand list
 
 type instr =
   | Assign of register * operand * operand
@@ -60,3 +61,4 @@ let successors = function
   | Fail -> []
   | Switch(_, cases, else_case) ->
      else_case :: (List.map ~f:(fun (_, label) -> label) cases)
+  | Tail_call _ -> []

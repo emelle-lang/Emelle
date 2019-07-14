@@ -218,6 +218,12 @@ module Ssa = struct
          ) pp cases;
        Buffer.add_string pp.buffer "] ";
        print_label pp else_label
+    | Ssa.Tail_call(f, arg, args) ->
+       Buffer.add_string pp.buffer "tail call ";
+       print_operand pp f;
+       Buffer.add_string pp.buffer " (";
+       print_comma_sep print_operand pp (arg :: args);
+       Buffer.add_string pp.buffer ")"
 
   let print_assn pp dest =
     print_reg pp dest;
@@ -245,14 +251,9 @@ module Ssa = struct
        print_assn pp dest;
        Buffer.add_string pp.buffer "call ";
        print_operand pp f;
-       Buffer.add_char pp.buffer ' ';
-       print_operand pp arg;
-       Buffer.add_string pp.buffer " [";
-       List.iter ~f:(fun operand ->
-           print_operand pp operand;
-           Buffer.add_string pp.buffer "; "
-         ) args;
-       Buffer.add_string pp.buffer "]"
+       Buffer.add_string pp.buffer " (";
+       print_comma_sep print_operand pp (arg :: args);
+       Buffer.add_string pp.buffer ")"
     | Ssa.Deref(dest, op) ->
        print_assn pp dest;
        Buffer.add_string pp.buffer "deref ";

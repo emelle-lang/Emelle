@@ -203,6 +203,8 @@ and compile_instr ctx anf
     : (Ir.Label.t list * Ssa.jump, 'a Message.t) Result.t =
   let open Result.Let_syntax in
   match anf.Anf.instr with
+  | Anf.Break(Anf.Call(f, arg, args)) ->
+     Ok ([], Ssa.Tail_call(f, arg, args))
   | Anf.Break(Anf.Case(tree, join_points)) ->
      let%bind branches =
        compile_join_points ctx join_points ctx.dest ctx.jump_dest in
@@ -214,6 +216,13 @@ and compile_instr ctx anf
            List.append labels acc
          )
      in (labels, jump)
+  | Anf.Break op ->
+     compile_opcode ctx ctx.dest op ~cont:(fun ctx ->
+         Ok ( [ctx.curr_block]
+            , match ctx.jump_dest with
+              | Label label -> Ssa.Break(label, [])
+              | Return -> Ssa.Return )
+       )
   | Anf.Let(reg, op, next) ->
      compile_opcode ctx reg op ~cont:(fun ctx ->
          compile_instr ctx next
@@ -251,13 +260,6 @@ and compile_instr ctx anf
               Queue.enqueue ctx.instrs (Ssa.Set_tag(dest, Ir.function_tag))
          ) in
      compile_instr ctx next
-  | Anf.Break op ->
-     compile_opcode ctx ctx.dest op ~cont:(fun ctx ->
-         Ok ( [ctx.curr_block]
-            , match ctx.jump_dest with
-              | Label label -> Ssa.Break(label, [])
-              | Return -> Ssa.Return )
-       )
 
 and compile_proc ctx proc =
   let open Result.Let_syntax in

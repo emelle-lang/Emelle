@@ -10,7 +10,7 @@ let operands_of_opcode = function
   | Ssa.Assign(dest, lval, rval) -> Some dest, [lval; rval]
   | Ssa.Box(dest, _, list) -> Some dest, list
   | Ssa.Box_dummy (dest, _) -> Some dest, []
-  | Ssa.Call(dest, f, arg, args) -> Some dest, f::arg::args
+  | Ssa.Call(dest, f, arg, args) -> Some dest, f :: arg :: args
   | Ssa.Deref(dest, op) -> Some dest, [op]
   | Ssa.Get(dest, op, _) -> Some dest, [op]
   | Ssa.Load(dest, op) -> Some dest, [op]
@@ -26,13 +26,14 @@ let operands_of_jump = function
   | Ssa.Fail -> []
   | Ssa.Return -> []
   | Ssa.Switch(scrut, _, _) -> [scrut]
+  | Ssa.Tail_call(f, arg, args) -> f :: arg :: args
 
 let regs_of_opcode opcode =
   let dest_opt, operands = operands_of_opcode opcode in
   ( dest_opt
   , List.fold operands ~init:[] ~f:(fun acc ->
         function
-        | Ir.Operand.Register reg -> reg::acc
+        | Ir.Operand.Register reg -> reg :: acc
         | _ -> acc
   ) )
 

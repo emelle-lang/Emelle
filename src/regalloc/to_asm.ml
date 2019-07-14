@@ -105,12 +105,13 @@ let rec compile_basic_block new_blocks coloring proc label =
         let instrs = Queue.create () in
         let%bind params =
           List.fold_result block.Ssa2.params ~init:[] ~f:(fun acc reg_param ->
-              find_color coloring reg_param (fun color -> Ok (color::acc))
+              find_color coloring reg_param (fun color -> Ok (color :: acc))
             ) in
         let%bind () =
           List.fold_result block.Ssa2.instrs ~init:() ~f:(fun () instr ->
               let%map instr = compile_instr coloring instr.Ssa2.opcode in
-              Queue.enqueue instrs instr) in
+              Queue.enqueue instrs instr
+            ) in
         let%map new_blocks = match block.Ssa2.jump with
           | Ssa.Break(label, args) ->
              let args = Array.of_list args in
@@ -144,6 +145,12 @@ let rec compile_basic_block new_blocks coloring proc label =
              let%map new_blocks, _ =
                compile_basic_block new_blocks coloring proc else_case
              in new_blocks
+          | Ssa.Tail_call(f, arg, args) ->
+             let%bind f = compile_operand coloring f in
+             let%bind arg = compile_operand coloring arg in
+             let%map args = compile_operands coloring args in
+             Queue.enqueue instrs (Asm.Tail_call(f, arg, args));
+             new_blocks
         in
         let new_block = { Asm.instrs; block_params = params } in
         (Map.set new_blocks ~key:label ~data:new_block, new_block)
@@ -163,7 +170,7 @@ let compile_proc coloring proc =
         let%bind list = acc in
         match Hashtbl.find coloring.Color.map reg with
         | Some color -> Ok (color :: list)
-        | None -> Message.unreachable "compile_proc params"
+        | None -> Message.unreachable "compile_proc params 1"
       ) in
   let%bind blocks, _ = compile_basic_block map coloring proc proc.Ssa2.entry in
   match Hashtbl.find coloring.Color.map proc.Ssa2.return with
@@ -174,7 +181,7 @@ let compile_proc coloring proc =
         ; blocks
         ; frame_size = coloring.Color.frame_size
         ; return = color }
-  | None -> Message.unreachable "compile_proc params"
+  | None -> Message.unreachable "compile_proc params 2"
 
 let compile { Color.colorings; main's_coloring } package =
   let open Result.Let_syntax in
