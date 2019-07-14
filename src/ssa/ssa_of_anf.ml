@@ -203,7 +203,10 @@ and compile_instr ctx anf
     : (Ir.Label.t list * Ssa.jump, 'a Message.t) Result.t =
   let open Result.Let_syntax in
   match anf.Anf.instr with
-  | Anf.Break(Anf.Call(f, arg, args)) ->
+  | Anf.Break(Anf.Call(f, arg, args)) when
+         (match ctx.jump_dest with
+          | Return -> true
+          | Label _ -> false) ->
      Ok ([], Ssa.Tail_call(f, arg, args))
   | Anf.Break(Anf.Case(tree, join_points)) ->
      let%bind branches =

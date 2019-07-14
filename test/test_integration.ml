@@ -315,8 +315,35 @@ let tests =
       let () =
         P.puts
           (case opt with
-           | P.None -> "Good"
-           | P.Some _ -> "Bad")
+           | P.None -> "Good\n"
+           | P.Some _ -> "Bad\n")
+     |}
+  ; {|
+      type T = A | B
+      type U = X | Y T
+      type V = V1 | V2 | V3
+
+      let puts = foreign "puts" forall . String -> Unit
+
+      let call_this_tailed = fun () -> V3
+
+      let f = fun x ->
+        let v = case x with
+          | X -> V1
+          | Y t ->
+             case t with
+             | A -> V2
+             | B -> call_this_tailed ()
+        in
+        case v with
+        | V1 -> V2
+        | V2 -> V3
+        | V3 -> V1
+
+       let () = case f (Y B) with
+         | V1 -> puts "Good\n"
+         | V2 -> puts "Bad\n"
+         | V3 -> puts "Bad\n"
      |} ]
 
 let std_prelude_prefix =

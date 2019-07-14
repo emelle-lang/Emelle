@@ -166,10 +166,6 @@ let rec load_params fun_data param_arg_pairs params args =
      (* More arguments than parameters *)
      Too_many(param_arg_pairs, args)
 
-let is_initialized = function
-  | `Uninitialized -> false
-  | _ -> true
-
 let rec tail_call t file frame fun_data args =
   let { fun_proc = proc
       ; fun_frame_size = frame_size
