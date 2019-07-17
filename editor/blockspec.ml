@@ -79,8 +79,14 @@ module T =
 
    and typedef =
      | Adt of Bexp.Widget.text_input
+              * (symbols, typeparam) Bexp.hole
               * (symbols, constr) Bexp.hole
               * (symbols, typedef) Bexp.hole
+
+   and typeparam = {
+       typeparam_name : Bexp.Widget.text_input;
+       typeparam_next : (symbols, typeparam) Bexp.hole;
+     }
 
    and constr = {
        constr_name : Bexp.Widget.text_input;
@@ -146,6 +152,10 @@ let branch_data =
 let ty_data =
   { Bexp.palette_name = "Type"
   ; palette_color = "grey" }
+
+let typeparam_data =
+  { Bexp.palette_name = "Type vars"
+  ; palette_color = "green" }
 
 let product_ty_data =
   { Bexp.palette_name = "Product Type"

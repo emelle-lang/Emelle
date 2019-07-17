@@ -52,6 +52,14 @@ let rec compile_constrs hole =
      ; datacon_name = term.Bexp.term.constr_name#value
      ; datacon_product = ty } :: next
 
+let rec compile_typeparam hole =
+  match hole.Bexp.hole_term with
+  | None -> []
+  | Some typeparam ->
+     let { typeparam_name; typeparam_next } = typeparam.Bexp.term in
+     let next = compile_typeparam typeparam_next in
+     typeparam_name#value :: next
+
 let rec compile_typedef hole =
   let open Result.Let_syntax in
   Bexp.Hole.clear_error hole;
@@ -59,12 +67,13 @@ let rec compile_typedef hole =
   | None -> Ok []
   | Some typedef ->
      match typedef.Bexp.term with
-     | Adt(name, def, next) ->
+     | Adt(name, typeparams, def, next) ->
+        let typeparams = compile_typeparam typeparams in
         let%bind def = compile_constrs def in
         let%map next = compile_typedef next in
         { Ast.adt_ann = Bexp.Hole hole
         ; adt_name = name#value
-        ; adt_params = []
+        ; adt_params = typeparams
         ; adt_datacons = def } :: next
 
 let rec compile_pattern hole =

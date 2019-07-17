@@ -47,8 +47,16 @@ ty:
   ;
 
 typedef:
-  | typedef: "type" ?"t" "=" newline tab constr "and" newline typedef
-    {{ fun (name, constrs, next) -> Adt(name, constrs, next) }}
+  | typedef: "type" ?"t" tab typeparam "=" newline
+    tab constr "and" newline typedef
+    {{ fun (name, typeparams, constrs, next) ->
+       Adt(name, typeparams, constrs, next) }}
+  ;
+
+typeparam:
+  | typeparam: "'" ?"a" tab typeparam
+    {{ fun (input, next) ->
+       { typeparam_name = input; typeparam_next = next } }}
   ;
 
 constr:
@@ -112,6 +120,4 @@ branch:
   ;
 
 {{
-
-
 }}
