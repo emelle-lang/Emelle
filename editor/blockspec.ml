@@ -43,7 +43,10 @@ module T =
      | EApp of bin_expr
      | EAssign of bin_expr
      | ECase of ((symbols, expr) Bexp.hole * (symbols, branch) Bexp.hole)
+     | EChar of Bexp.Widget.text_input
      | EConstr of (symbols, ident) Bexp.hole
+     | EFloat of Bexp.Widget.text_input
+     | EInt of Bexp.Widget.text_input
      | ELam of ((symbols, pat) Bexp.hole * (symbols, expr) Bexp.hole)
      | ELet of ((symbols, let_def) Bexp.hole * (symbols, expr) Bexp.hole)
      | ELet_rec of ((symbols, let_rec) Bexp.hole * (symbols, expr) Bexp.hole)

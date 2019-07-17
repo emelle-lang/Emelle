@@ -77,14 +77,17 @@ expr:
   | eapp: expr "(" expr ")" {{ fun (f, x) -> EApp(f, x) }}
   | eassn: expr ":=" expr {{ fun (l, r) -> EAssign(l, r) }}
   | ecase: "case" expr "of" newline tab branch {{ fun (l, r) -> ECase(l, r) }}
+  | echar: "char '" ?"c" "'" {{ fun input -> EChar input }}
   | econstr: "cons" ident {{ fun id -> EConstr id }}
+  | efloat: "decimal" ?"0.0" {{ fun input -> EFloat input }}
+  | eint: "integer" ?"0" {{ fun input -> EInt input }}
   | elam: "fun" pat "->" expr {{ fun (p, e) -> ELam(p, e) }}
   | elet: "let" let_def "in" newline expr {{ fun (d, b) -> ELet(d, b) }}
   | elet_rec: "let rec" let_rec "in" newline expr
       {{ fun (d, b) -> ELet_rec(d, b) }}
   | eref: "ref" {{ fun () -> ERef }}
   | eseq: expr ";" newline expr {{ fun (f, s) -> ESeq(f, s) }}
-  | estring: "\"" ?"Hello, world!" "\"" {{ fun input -> EString input }}
+  | estring: "string \"" ?"Hello, world!" "\"" {{ fun input -> EString input }}
   | eunit: "()" {{ fun () -> EUnit }}
   | evar: "var" ident {{ fun input -> EVar input }}
   ;

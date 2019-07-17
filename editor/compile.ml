@@ -130,9 +130,26 @@ and compile_expr hole =
           let%bind scrut = compile_expr scrut in
           let%map branches = compile_branch branches in
           Ast.Case(scrut, branches)
+       | EChar input ->
+          if String.length input#value = 1 then
+            Ok (Ast.Lit (Literal.Char (String.get input#value 0)))
+          else
+            Error (Bexp.Hole hole, "Input must be a single character")
        | EConstr name ->
           let%map name = compile_ident name in
           Ast.Constr name
+       | EFloat input ->
+          (try
+             let float = Float.of_string input#value in
+             Ok (Ast.Lit (Literal.Float float))
+           with
+           | _ -> Error (Bexp.Hole hole, "Invalid decimal"))
+       | EInt input ->
+          (try
+             let int = Int.of_string input#value in
+             Ok (Ast.Lit (Literal.Int int))
+           with
+           | _ -> Error (Bexp.Hole hole, "Invalid integer"))
        | ELam(pat, body) ->
           let%bind pat = compile_pattern pat in
           let%map body = compile_expr body in
