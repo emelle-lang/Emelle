@@ -10,7 +10,7 @@ https://emmeline.gitlab.io/emmeline/editor/index.html.**
 
 First, download OPAM, the OCaml package manager. Then, run:
 
-    opam switch 4.08.0
+    opam switch 4.08 4.08.0
     opam install . --deps-only
     opam install ./bexp --deps-only
     dune runtest

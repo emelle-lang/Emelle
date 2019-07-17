@@ -1,13 +1,11 @@
+image: ocaml/opam2:4.08
+
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
 
 before_script:
-- apt-get update -qq
-- apt-get install -qq bubblewrap
-- apt-get install -qq unzip
-- echo "" | sh <(curl -sL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)
-- opam init -c 4.08.0
-- eval $(opam env)
+- opam switch
+- opam depext conf-m4
 - opam install -y -q odoc
 - opam install -y -q . --deps-only
 - opam install -y -q ./bexp --deps-only
