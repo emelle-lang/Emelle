@@ -59,6 +59,7 @@ and 'a expr' =
   | Let of 'a let_binding list * 'a expr
   | Let_rec of 'a rec_binding list * 'a expr
   | Lit of Literal.t
+  | Op of 'a expr * qual_id * 'a expr
   | Prim of string * 'a polytype
   | Ref
   | Seq of 'a expr * 'a expr

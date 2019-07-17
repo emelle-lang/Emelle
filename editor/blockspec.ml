@@ -42,14 +42,17 @@ module T =
    and expr =
      | EApp of bin_expr
      | EAssign of bin_expr
-     | ECase of ((symbols, expr) Bexp.hole * (symbols, branch) Bexp.hole)
+     | ECase of (symbols, expr) Bexp.hole * (symbols, branch) Bexp.hole
      | EChar of Bexp.Widget.text_input
      | EConstr of (symbols, ident) Bexp.hole
      | EFloat of Bexp.Widget.text_input
      | EInt of Bexp.Widget.text_input
-     | ELam of ((symbols, pat) Bexp.hole * (symbols, expr) Bexp.hole)
-     | ELet of ((symbols, let_def) Bexp.hole * (symbols, expr) Bexp.hole)
-     | ELet_rec of ((symbols, let_rec) Bexp.hole * (symbols, expr) Bexp.hole)
+     | ELam of (symbols, pat) Bexp.hole * (symbols, expr) Bexp.hole
+     | ELet of (symbols, let_def) Bexp.hole * (symbols, expr) Bexp.hole
+     | ELet_rec of (symbols, let_rec) Bexp.hole * (symbols, expr) Bexp.hole
+     | EOp of (symbols, expr) Bexp.hole
+              * (symbols, ident) Bexp.hole
+              * (symbols, expr) Bexp.hole
      | ERef
      | ESeq of bin_expr
      | EString of Bexp.Widget.text_input

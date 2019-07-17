@@ -162,6 +162,11 @@ and compile_expr hole =
           let%bind defs = compile_let_rec defs in
           let%map body = compile_expr body in
           (Ast.Let_rec(defs, body) : _ Ast.expr')
+       | EOp(lhs, op, rhs) ->
+          let%bind lhs = compile_expr lhs in
+          let%bind rhs = compile_expr rhs in
+          let%map op = compile_ident op in
+          Ast.Op(lhs, op, rhs)
        | ERef -> Ok Ast.Ref
        | ESeq(f, s) ->
           let%bind f = compile_expr f in

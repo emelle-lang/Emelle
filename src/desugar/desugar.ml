@@ -157,6 +157,23 @@ let type_of_ast_polytype
   >>= fun (tvar_map, _) ->
   normalize t tvar_map body
 
+let find_var t env ann qual_id =
+  match qual_id with
+  | Ast.Internal name -> (* Unqualified name *)
+     begin match Env.find env name with
+     (* Found in the local environment *)
+     | Some id -> Ok (Term.Var id)
+     | None -> Message.error ann (Message.Unresolved_name name)
+     end
+  | Ast.External _ -> (* Qualified name *)
+     match
+       find Package.find_val
+         (fun name -> Message.Unresolved_name name) t qual_id
+     with
+     | Ok ({ Qual_id.prefix; _ }, (ty, offset)) ->
+        Ok (Term.Extern_var (prefix, offset, ty))
+     | Error e -> Message.error ann e
+
 let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
   let open Result.Let_syntax in
   let%map term =
@@ -283,6 +300,14 @@ let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
 
     | Ast.Lit lit -> Ok (Term.Lit lit)
 
+    | Ast.Op(lhs, op, rhs) ->
+       let%bind lhs = term_of_expr t checker env lhs in
+       let%bind rhs = term_of_expr t checker env rhs in
+       let%map op = find_var t env ann op in
+       Term.App
+         ( { Term.term = Term.App({ Term.term = op; ann }, lhs); ann }
+         , rhs )
+
     | Ast.Prim(op, ty) ->
        type_of_ast_polytype t checker ty >>| fun ty ->
        Term.Prim(op, ty)
@@ -296,22 +321,7 @@ let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
 
     | Ast.Typed_hole -> Ok (Term.Typed_hole env)
 
-    | Ast.Var qual_id ->
-       match qual_id with
-       | Ast.Internal name -> (* Unqualified name *)
-          begin match Env.find env name with
-          (* Found in the local environment *)
-          | Some id -> Ok (Term.Var id)
-          | None -> Message.error ann (Message.Unresolved_name name)
-          end
-       | Ast.External _ -> (* Qualified name *)
-          match
-            find Package.find_val
-              (fun name -> Message.Unresolved_name name) t qual_id
-          with
-          | Ok ({ Qual_id.prefix; _ }, (ty, offset)) ->
-             Ok (Term.Extern_var (prefix, offset, ty))
-          | Error e -> Message.error ann e
+    | Ast.Var qual_id -> find_var t env ann qual_id
 
   in { Term.ann = ann; term = term }
 
