@@ -45,11 +45,13 @@ let () =
                 |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix))
                      main_prefix
               with
-              | Ok (_, asm_module) ->
+              | Ok asm_module ->
                  Caml.print_endline "OK!";
-                 let ctx =
-                   Eval.create io (Hashtbl.create (module Qual_id.Prefix)) in
-                 ignore (Eval.eval ctx asm_module)
+                 let vm =
+                   Eval.create (Hashtbl.create (module Qual_id.Prefix))
+                 in
+                 Io.init io vm;
+                 ignore (Eval.eval vm asm_module)
               | Error errs ->
                  Caml.print_endline "ERROR!";
                  Prettyprint.print_message Prettyprint.print_span pp errs;

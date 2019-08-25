@@ -289,7 +289,7 @@ let tests =
         | False -> ()
 
      |}
-  ; {|let puts = foreign "puts" forall a . a -> Unit
+  ; {|let puts = foreign "puts" forall . String -> Unit
 
       let () = puts "Hello world!\n"
      |}
@@ -309,14 +309,15 @@ let tests =
       let () = P.puts "Hello world!\n"
      |}
   ; {|import "std" Prelude as P
+      import "std" Option as Opt
 
-      let opt = P.None
+      let opt = Opt.None
 
       let () =
         P.puts
           (case opt with
-           | P.None -> "Good\n"
-           | P.Some _ -> "Bad\n")
+           | Opt.None -> "Good\n"
+           | Opt.Some _ -> "Bad\n")
      |}
   ; {|
       type T = A | B
@@ -354,7 +355,7 @@ let create_std () =
   let std = Hashtbl.create (module Qual_id.Prefix) in
   let rt = Hashtbl.create (module Qual_id.Prefix) in
 
-  let prelude_ct, prelude_rt  =
+  let prelude_rt  =
     let code =
       {|
 export (id, const, puts)
@@ -369,15 +370,14 @@ type Option a = Some a | None
        |}
     in
     match
-      Parser.file Lexer.expr (Lexing.from_string code)
-      |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix))
-           std_prelude_prefix
+      Pipeline.compile_source std std_prelude_prefix (Lexing.from_string code)
     with
-    | Ok(package, compiled) ->
-       package, Eval.eval (Eval.create Io.stdio rt) compiled
+    | Ok compiled ->
+       let vm = Eval.create rt in
+       Io.init Io.stdio vm;
+       Eval.eval vm compiled
     | Error _ -> assert false
   in
-  Hashtbl.add_exn std ~key:std_prelude_prefix ~data:prelude_ct;
   Hashtbl.add_exn rt ~key:std_prelude_prefix ~data:prelude_rt;
   std, rt
 
@@ -385,15 +385,17 @@ let main_prefix = { Qual_id.Prefix.package = "main"; path = [] }
 
 let () =
   List.iter ~f:(fun test ->
-      let std, rt = create_std () in
+      let rt = Pipeline.create_hashtbl () in
+      let vm = Eval.create rt in
+      Io.init Io.stdio vm;
+      let packages = Pipeline.create_hashtbl () in
+      Pipeline.create_std packages vm;
       match
-        Parser.file Lexer.expr (Lexing.from_string test)
-        |> Pipeline.compile std main_prefix
+        Pipeline.compile_source packages main_prefix (Lexing.from_string test)
       with
-      | Ok (_, file) ->
+      | Ok file ->
          begin
-           let ctx = Eval.create Io.stdio rt in
-           try ignore (Eval.eval ctx file) with
+           try ignore (Eval.eval vm file) with
            | _ ->
               let pp = Prettyprint.create () in
               Prettyprint.Asm.print_module pp file;

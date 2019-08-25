@@ -69,28 +69,9 @@ type 'a arg_result =
   | Too_few of 'a partial_app
   | Too_many of (int * 'a) list * 'a list
 
-let create io rt =
+let create rt =
   { eval'd_packages = rt
-  ; foreign_values =
-      Hashtbl.of_alist_exn (module String)
-        [ "putc"
-        , `Foreign
-            { arity = 1
-            ; params = [0]
-            ; f = function
-                  | [|`Char c|] ->
-                     io.Io.putc c;
-                     `Unit
-                  | _ -> failwith "Type error" }
-        ; "puts"
-        , `Foreign
-            { arity = 1
-            ; params = [0]
-            ; f = function
-                  | [|`String s|] ->
-                     io.Io.puts s;
-                     `Unit
-                  | _ -> failwith "Type error" } ] }
+  ; foreign_values = Hashtbl.create (module String) }
 
 let add_foreign_fun t name data =
   Hashtbl.set t.foreign_values ~key:name ~data:(`Foreign data)

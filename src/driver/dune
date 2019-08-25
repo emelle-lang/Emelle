@@ -1,0 +1,4 @@
+(rule
+  (targets pipeline.ml)
+  (deps    (:first-dep pipeline.cppo.ml) (source_tree ../../std))
+  (action  (run %{bin:cppo} %{first-dep} -o %{targets} -n)))

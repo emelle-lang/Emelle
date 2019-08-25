@@ -36,4 +36,49 @@ let compile packages name ast_package =
   Color.handle_file package'
   >>= fun colorings ->
   To_asm.compile colorings package'
-  >>| fun package' -> (st.package, package')
+
+let create_hashtbl () =
+  Hashtbl.create (module Qual_id.Prefix)
+
+let compile_source packages prefix lexbuf =
+  Parser.file Lexer.expr lexbuf |> compile packages prefix
+
+let std_path str =
+  { Qual_id.Prefix.package = "std"
+  ; path = [str] }
+
+let create_std packages vm =
+  let make_module mod_name source_code =
+    let prefix = std_path mod_name in
+    let module_object =
+      match
+        compile_source packages prefix (Lexing.from_string source_code)
+      with
+      | Ok compiled ->
+         Eval.eval vm compiled
+      | Error e ->
+         let pp = Prettyprint.create () in
+         Prettyprint.print_message Prettyprint.print_span pp e;
+         Caml.print_endline (Prettyprint.to_string pp);
+         assert false
+      | exception e ->
+         Caml.print_endline ("Exception when compiling module " ^ mod_name);
+         raise e
+    in
+    Hashtbl.add_exn vm.Eval.eval'd_packages ~key:prefix ~data:module_object
+  in
+  make_module "IO" {|
+#include "../../std/io.ml"
+  |};
+  make_module "Option" {|
+#include "../../std/option.ml"
+  |};
+  make_module "Prelude" {|
+export (id, const, puts)
+
+let id = fun x -> x
+
+let const = fun x _ -> x
+
+let puts = foreign "puts" forall . String -> Unit
+  |}
