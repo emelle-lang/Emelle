@@ -47,33 +47,27 @@ let std_path str =
   { Qual_id.Prefix.package = "std"
   ; path = [str] }
 
-let create_std packages vm =
-  let make_module mod_name source_code =
-    let prefix = std_path mod_name in
-    let module_object =
-      match
-        compile_source packages prefix (Lexing.from_string source_code)
-      with
-      | Ok compiled ->
-         Eval.eval vm compiled
-      | Error e ->
-         let pp = Prettyprint.create () in
-         Prettyprint.print_message Prettyprint.print_span pp e;
-         Caml.print_endline (Prettyprint.to_string pp);
-         assert false
-      | exception e ->
-         Caml.print_endline ("Exception when compiling module " ^ mod_name);
-         raise e
-    in
-    Hashtbl.add_exn vm.Eval.eval'd_packages ~key:prefix ~data:module_object
+let make_module packages prefix vm source_code =
+  let module_object =
+    match compile_source packages prefix (Lexing.from_string source_code) with
+    | Ok compiled ->
+       Eval.eval vm compiled
+    | Error e ->
+       let pp = Prettyprint.create () in
+       Prettyprint.print_message Prettyprint.print_span pp e;
+       Caml.print_endline (Prettyprint.to_string pp);
+       assert false
   in
-  make_module "IO" {|
+  Hashtbl.add_exn vm.Eval.eval'd_packages ~key:prefix ~data:module_object
+
+let create_std packages vm =
+  make_module packages (std_path "IO") vm {|
 #include "../../std/io.ml"
   |};
-  make_module "Option" {|
+  make_module packages (std_path "Option") vm {|
 #include "../../std/option.ml"
   |};
-  make_module "Prelude" {|
+  make_module packages (std_path "Prelude") vm {|
 export (id, const, puts)
 
 let id = fun x -> x

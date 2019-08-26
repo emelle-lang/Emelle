@@ -51,6 +51,9 @@ let () =
            let vm = create_vm rt in
            let packages = Pipeline.create_hashtbl () in
            Pipeline.create_std packages vm;
+           Pipeline.make_module packages (Pipeline.std_path "Graphics") vm {|
+#include "../std/graphics.ml"
+           |};
            match
              let prefix = { Qual_id.Prefix.package = ""; path = [] } in
              Pipeline.compile packages prefix modl
