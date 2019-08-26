@@ -13,7 +13,7 @@ type 'value box = {
 
 type 'value proc =
   | Emmeline_proc of Asm.proc
-  | OCaml_proc of ('value array -> 'value)
+  | OCaml_proc of (Asm.file -> 'value array -> 'value)
 
 type 'value partial_app = {
     proc : 'value proc;
@@ -26,7 +26,7 @@ type 'value partial_app = {
 type 'value foreign = {
     arity : int;
     params : int list;
-    f : 'value array -> 'value
+    f : Asm.file -> 'value array -> 'value
   }
 
 and 'a value = 'a constraint 'a = [>
@@ -181,7 +181,7 @@ let rec tail_call t file frame fun_data args =
        List.iter param_arg_pairs ~f:(fun (param, arg) ->
            data.(param) <- arg
          );
-       frame.return <- proc data
+       frame.return <- proc file data
   in
   match load_params fun_data param_arg_pairs params args with
   | Exact param_arg_pairs ->
@@ -318,7 +318,7 @@ and execute_function t file proc proc_data frame_size param_arg_pairs =
      List.iter param_arg_pairs ~f:(fun (param, arg) ->
          data.(param) <- arg
        );
-     proc data
+     proc file data
 
 and apply_function t file fun_data args =
   let { fun_proc = proc

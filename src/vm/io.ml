@@ -13,7 +13,8 @@ type t = {
 
 let add_putc t vm =
   Eval.add_foreign_fun vm "putc"
-    (Eval.foreign ~arity:1 (function
+    (Eval.foreign ~arity:1 (fun _ args ->
+         match args with
          | [|`Char c|] ->
             t.putc c;
             `Unit
@@ -21,7 +22,8 @@ let add_putc t vm =
 
 let add_puts t vm =
   Eval.add_foreign_fun vm "puts"
-    (Eval.foreign ~arity:1 (function
+    (Eval.foreign ~arity:1 (fun _ args ->
+         match args with
          | [|`String s|] ->
             t.puts s;
             `Unit
