@@ -64,6 +64,9 @@ let create_std packages vm =
   make_module packages (std_path "IO") vm {|
 #include "../../std/io.ml"
   |};
+  make_module packages (std_path "List") vm {|
+#include "../../std/list.ml"
+  |};
   make_module packages (std_path "Option") vm {|
 #include "../../std/option.ml"
   |};

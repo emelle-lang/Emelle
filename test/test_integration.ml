@@ -351,36 +351,6 @@ let std_prelude_prefix =
   { Qual_id.Prefix.package = "std"
   ; path = ["Prelude"] }
 
-let create_std () =
-  let std = Hashtbl.create (module Qual_id.Prefix) in
-  let rt = Hashtbl.create (module Qual_id.Prefix) in
-
-  let prelude_rt  =
-    let code =
-      {|
-export (id, const, puts)
-
-let id = fun x -> x
-
-let const = fun x _ -> x
-
-let puts = foreign "puts" forall . String -> Unit
-
-type Option a = Some a | None
-       |}
-    in
-    match
-      Pipeline.compile_source std std_prelude_prefix (Lexing.from_string code)
-    with
-    | Ok compiled ->
-       let vm = Eval.create rt in
-       Io.init Io.stdio vm;
-       Eval.eval vm compiled
-    | Error _ -> assert false
-  in
-  Hashtbl.add_exn rt ~key:std_prelude_prefix ~data:prelude_rt;
-  std, rt
-
 let main_prefix = { Qual_id.Prefix.package = "main"; path = [] }
 
 let () =
