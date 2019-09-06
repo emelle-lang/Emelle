@@ -12,6 +12,7 @@ homepage: "https://gitlab.com/emmeline/emmeline"
 bug-reports: "https://gitlab.com/emmeline/emmeline/issues"
 dev-repo: "git+https://gitlab.com/emmeline/emmeline.git"
 depends: [
+  "cppo" {build & >= "1.6.0"}
   "dune" {build & >= "1.10.0"}
   "base" {">=v0.12" & < "v0.13"}
   "ppx_compare" {>= "v0.12" & < "v0.13"}
