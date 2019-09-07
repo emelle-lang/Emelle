@@ -1,3 +1,26 @@
-(lang dune 1.6)
+(lang dune 1.10)
 (name emmeline)
 (using menhir 1.0)
+(generate_opam_files true)
+
+(license MPL-2.0)
+(authors "Types Logics Cats" "TheAspiringHacker@protonmail.com")
+(maintainers "Types Logics Cats" "TheAspiringHacker@protonmail.com")
+(source (uri "git://gitlab.com/emmeline/emmeline.git"))
+(bug_reports "https://gitlab.com/emmeline/emmeline/issues")
+(homepage "https://gitlab.com/emmeline/emmeline")
+
+(package
+  (name emmeline)
+  (synopsis "An ML dialect")
+  (description "An ML dialect")
+  (depends
+    (cppo (and :build (>= 1.6)))
+    (dune (and :build (>= 1.10)))
+    (base (and (>= v0.12) (< v0.13)))
+    (ppx_compare (and (>= v0.12) (< v0.13)))
+    (ppx_hash (and (>= v0.12) (< v0.13)))
+    (ppx_let (and (>= v0.12) (< v0.13)))
+    (menhir (>= 20181113))
+  )
+)
