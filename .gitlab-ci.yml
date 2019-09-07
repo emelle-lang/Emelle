@@ -6,13 +6,12 @@ variables:
 before_script:
 - opam switch
 - opam depext conf-m4
-- opam install -y -q odoc
-- opam install -y -q . --deps-only
-- opam install -y -q ./bexp --deps-only
 
 build:
   stage: build
   script:
+  - opam install -y .
+  - opam install -y -q ./bexp --deps-only
   - dune build app/main.exe --profile release
   - dune build editor/main.bc.js --profile release
   - dune build editor/index.html
@@ -20,6 +19,8 @@ build:
   - dune build try/main.bc.js --profile release
   - dune build try/stylesheet.css
   - dune build try/index.html
+  - opam install -y -q odoc
+  - dune build @doc
   artifacts:
     paths:
     - _build
@@ -27,12 +28,11 @@ build:
 test:
   stage: test
   script:
-  - dune runtest
+  - opam install -y -t .
 
 pages:
   stage: deploy
   script:
-  - dune build @doc
   - mkdir public
   - mv _build/main/_doc/_html public/doc
   - mv _build/main/editor public/editor
