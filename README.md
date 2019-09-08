@@ -10,7 +10,6 @@ https://emmeline.gitlab.io/emmeline/editor/index.html.**
 
 First, download OPAM, the OCaml package manager. Then, run:
 
-    opam switch 4.08 4.08.0
     opam install . --deps-only
     opam install ./bexp --deps-only
     dune runtest
@@ -22,4 +21,4 @@ First, download OPAM, the OCaml package manager. Then, run:
     dune build editor/index.html
     dune build editor/stylesheet.css
 
-All of the build output will be in `_build/main`.
+All of the build output will be in `_build/default`.

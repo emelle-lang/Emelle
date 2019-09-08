@@ -34,9 +34,9 @@ pages:
   stage: deploy
   script:
   - mkdir public
-  - mv _build/main/_doc/_html public/doc
-  - mv _build/main/editor public/editor
-  - mv _build/main/try public/try
+  - mv _build/default/_doc/_html public/doc
+  - mv _build/default/editor public/editor
+  - mv _build/default/try public/try
   artifacts:
     paths:
     - public
