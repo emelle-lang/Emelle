@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 open Stdio
 open Emmeline
@@ -28,4 +29,7 @@ let () =
      let pprinter = Prettyprint.create () in
      Prettyprint.print_type pprinter (-1) ty;
      print_endline (Prettyprint.to_string pprinter)
-  | Error _ -> ()
+  | Error e ->
+     let pp = Prettyprint.create () in
+     Prettyprint.print_message Prettyprint.print_span pp e;
+     Stdio.print_endline (Prettyprint.to_string pp)

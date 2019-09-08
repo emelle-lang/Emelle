@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type purity =
@@ -20,41 +21,40 @@ type prim =
   | Unit
 [@@deriving compare, sexp]
 
-(** Type [quant] describes whether a type variable is existentially quantified
-    within a scope or universally quantified. *)
-type quant =
-  | Exists of int ref
-  | Univ
+(** A type variable is either:
+    - Rigid
+    - Solved
+    - Wobbly *)
+type var =
+  | Rigid of rigid_var
+  | Solved of t
+  | Wobbly of wobbly_var
 [@@deriving sexp]
 
-(** Each type is annotated with the greatest level of its children. *)
-type t =
+and t =
   | App of t * t
   | Nominal of Qual_id.t
   | Prim of prim
-  | Var of var
+  | Var of var ref
 [@@deriving sexp]
-and var =
-  { id : int
-  ; mutable quant : quant
-  ; mutable ty : t option
-  ; mutable purity : purity
-  ; mutable lam_level : int
-  ; kind : Kind.t }
+
+and rigid_var =
+  { rigid_id : int
+  ; rigid_purity : purity
+  ; rigid_lam_level : int
+  ; rigid_kind : Kind.t }
 [@@deriving sexp]
+
+and wobbly_var = {
+    wobbly_id : int;
+    mutable wobbly_purity : purity;
+    mutable wobbly_lam_level : int;
+    wobbly_kind : Kind.t;
+    mutable wobbly_let_level : int;
+  }
 
 (** Type [vargen] is the generator of fresh type variables. *)
 type vargen = int ref
-
-module Var = struct
-  type t = var
-  [@@deriving sexp]
-
-  type gen = vargen
-
-  let compare l r = compare l.id r.id
-  let hash x = x.id
-end
 
 type adt = {
     name : string;
@@ -72,14 +72,22 @@ let equal_prim x y = (compare_prim x y) = 0
 (** [create_vargen ()] creates a fresh vargen state. *)
 let create_vargen () = { contents = 0 }
 
-let fresh_var vargen purity quant lam_level kind =
-  vargen := !vargen + 1;
-  { id = !vargen - 1
-  ; ty = None
-  ; quant
-  ; purity
-  ; lam_level
-  ; kind = kind }
+let fresh_wobbly vargen purity ~let_level ~lam_level kind =
+  let id = !vargen in
+  vargen := id + 1;
+  { wobbly_id = id
+  ; wobbly_purity = purity
+  ; wobbly_lam_level = lam_level
+  ; wobbly_kind = kind
+  ; wobbly_let_level = let_level }
+
+let fresh_rigid vargen purity lam_level kind =
+  let id = !vargen in
+  vargen := id + 1;
+  { rigid_id = id
+  ; rigid_purity = purity
+  ; rigid_lam_level = lam_level
+  ; rigid_kind = kind }
 
 let arrow l r =
   let arrow = Prim Arrow in
@@ -115,34 +123,34 @@ let kind_of_prim = function
   | String -> Kind.Mono
   | Unit -> Kind.Mono
 
-(** [occurs tvar ty] performs the occurs check, returning true if [tyvar] occurs
-    in [ty]. It ignores universally quantified type variables and adjusts the
-    levels of unassigned typevars when necessary. *)
-let rec occurs tvar ty =
+(** [occurs wobbly ty] performs the occurs check, returning true if [wobbly]
+    occurs in [ty]. It ignores universally quantified type variables and adjusts
+    the levels of unassigned typevars when necessary. *)
+let rec occurs wobbly ty =
   match ty with
-  | App(tcon, targ) -> occurs tvar tcon || occurs tvar targ
+  | App(tcon, targ) -> occurs wobbly tcon || occurs wobbly targ
   | Nominal _ -> false
   | Prim _ -> false
-  | Var { id; _ } when id = tvar.id -> true
-  | Var { ty = Some ty; _ } -> occurs tvar ty
-  | Var tvar2 ->
-     begin match tvar.quant, tvar2.quant with
-     | Exists let_level, Exists let_level2 ->
-        if !let_level2 > !let_level then (
-          let_level2 := !let_level
-        );
-        begin match tvar.purity with
-        | Impure ->
-           if tvar2.lam_level > tvar.lam_level then
-             tvar2.lam_level <- tvar.lam_level
-        | Pure -> ()
-        end
+  | Var { contents = Solved ty } -> occurs wobbly ty
+  | Var { contents = Rigid _ } -> false
+  | Var { contents = Wobbly wobbly2 }
+       when wobbly.wobbly_id = wobbly2.wobbly_id ->
+     true
+  | Var { contents = Wobbly wobbly2 } ->
+     (* If the type variable being solved is impure, every type variable in its
+        definition must have its lambda-level or lower
+        If the type variable being solved is impure, then every type variable in
+        the definition must be impure *)
+     begin match wobbly.wobbly_purity with
+     | Impure ->
+        wobbly2.wobbly_purity <- wobbly.wobbly_purity;
+        if wobbly2.wobbly_lam_level > wobbly.wobbly_lam_level then
+          wobbly2.wobbly_lam_level <- wobbly.wobbly_lam_level
      | _ -> ()
      end;
-     begin match tvar2.purity with
-     | Pure -> tvar2.purity <- tvar.purity
-     | _ -> ()
-     end;
+     if wobbly2.wobbly_let_level > wobbly.wobbly_let_level then (
+       wobbly2.wobbly_let_level <- wobbly.wobbly_let_level
+     );
      false
 
 let rec decr_lam_levels level = function
@@ -151,10 +159,8 @@ let rec decr_lam_levels level = function
      decr_lam_levels level targ
   | Nominal _ -> ()
   | Prim _ -> ()
-  | Var { ty = Some ty; _ } -> decr_lam_levels level ty
-  | Var tvar ->
-     match tvar.quant with
-     | Exists _ ->
-        if tvar.lam_level > level && tvar.lam_level > 0 then
-          tvar.lam_level <- tvar.lam_level - 1
-     | Univ -> ()
+  | Var { contents = Solved ty; _ } -> decr_lam_levels level ty
+  | Var { contents = Wobbly wobbly } ->
+     if wobbly.wobbly_lam_level > level && wobbly.wobbly_lam_level > 0 then
+       wobbly.wobbly_lam_level <- wobbly.wobbly_lam_level - 1
+  | Var { contents = Rigid _ } -> ()

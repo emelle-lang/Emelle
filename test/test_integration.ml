@@ -12,8 +12,8 @@ exception Fail of string * phase
 
 let optionally f x =
   try Ok (f x) with
-  | Lexer.Error str -> Error (Sequence.return (Message.Lexer_error str))
-  | Parser.Error -> Error (Sequence.return Message.Parser_error)
+  | Lexer.Error str -> Error (Message.Lexer_error str)
+  | Parser.Error -> Error Message.Parser_error
 
 let tests =
   [ "fun", Syntax
@@ -77,7 +77,7 @@ let test (input, phase) =
   let open Option.Monad_infix in
   let next =
     test_phase (optionally (fun str ->
-              Parser.expr_eof Lexer.expr (Lexing.from_string str)
+                    Parser.expr_eof Lexer.expr (Lexing.from_string str)
       )) Syntax input input phase
   in
   next >>= fun next ->

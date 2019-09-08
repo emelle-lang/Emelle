@@ -26,13 +26,16 @@ let create package packages =
   ; tvargen = Type.create_vargen ()
   ; kvargen = Kind.create_vargen () }
 
-let fresh_quant checker =
-  Type.Exists (ref checker.let_level)
-
 let fresh_tvar ?(purity = Type.Pure) (checker : t) =
   Type.Var
-    (Type.fresh_var
-       checker.tvargen purity (fresh_quant checker) checker.lam_level Kind.Mono)
+    (ref (Type.Wobbly
+            (Type.fresh_wobbly
+               checker.tvargen
+               purity
+               ~let_level:checker.let_level
+               ~lam_level:checker.lam_level
+               Kind.Mono))
+    )
 
 let find f st { Qual_id.prefix; name } =
   match Hashtbl.find st.packages prefix with
@@ -77,13 +80,14 @@ let rec kind_of_type checker ty =
      | None -> Error (Message.Unresolved_type path)
      end
   | Type.Prim prim -> Ok (Type.kind_of_prim prim)
-  | Type.Var { ty = Some ty; _ } -> kind_of_type checker ty
-  | Type.Var { ty = None; kind; _ } -> Ok kind
+  | Type.Var { contents = Solved ty } -> kind_of_type checker ty
+  | Type.Var { contents = Wobbly wobbly } -> Ok wobbly.Type.wobbly_kind
+  | Type.Var { contents = Rigid var } -> Ok var.Type.rigid_kind
 
 (** [unify_types typechecker type0 type1] unifies [type0] and [type1], returning
     a result with any unification errors. *)
 let rec unify_types checker lhs rhs =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   if phys_equal lhs rhs then
     Ok ()
   else
@@ -101,18 +105,21 @@ let rec unify_types checker lhs rhs =
     | Type.Prim lprim, Type.Prim rprim
          when Type.equal_prim lprim rprim ->
        Ok ()
-    | Type.Var { id = id1; _ }, Type.Var { id = id2; _ } when id1 = id2 ->
+    | Type.Var { contents = Wobbly wobbly1 }
+    , Type.Var { contents = Wobbly wobbly2 }
+         when wobbly1.wobbly_id = wobbly2.wobbly_id ->
        Ok ()
-    | Type.Var { ty = Some ty0; _ }, ty1
-    | ty0, Type.Var { ty = Some ty1; _ } ->
+    | Type.Var { contents = Solved ty0 }, ty1
+    | ty0, Type.Var { contents = Solved ty1 } ->
        unify_types checker ty0 ty1
-    | Type.Var var, ty | ty, Type.Var var ->
-       if Type.occurs var ty then
-         Error (Message.Type_unification_fail(lhs, rhs))
+    | Type.Var ({ contents = Wobbly wobbly } as r), ty
+    | ty, Type.Var ({ contents = Wobbly wobbly } as r) ->
+       if Type.occurs wobbly ty then
+         Error (Message.Occurs(wobbly, ty))
        else
-         kind_of_type checker ty >>= fun kind ->
-         unify_kinds kind var.kind >>| fun () ->
-         var.ty <- Some ty
+         let%bind kind = kind_of_type checker ty in
+         let%map () = unify_kinds kind wobbly.wobbly_kind in
+         r := Type.Solved ty
     | _ -> Error (Message.Type_unification_fail(lhs, rhs))
 
 let in_new_let_level f self =
@@ -120,6 +127,21 @@ let in_new_let_level f self =
 
 let in_new_lam_level f self =
   f { self with lam_level = self.lam_level + 1 }
+
+let rigid_of_wobbly checker wobbly =
+  { Type.rigid_id = wobbly.Type.wobbly_id
+  ; rigid_purity = wobbly.wobbly_purity
+  ; rigid_lam_level = wobbly.wobbly_lam_level - checker.lam_level
+  ; rigid_kind = wobbly.wobbly_kind }
+
+let wobbly_of_rigid checker rigid =
+  let id = !(checker.tvargen) in
+  checker.tvargen := id + 1;
+  { Type.wobbly_id = id
+  ; wobbly_purity = rigid.Type.rigid_purity
+  ; wobbly_lam_level = rigid.rigid_lam_level + checker.lam_level
+  ; wobbly_kind = rigid.rigid_kind
+  ; wobbly_let_level = checker.let_level }
 
 (** [gen checker ty] generalizes a type by replacing existential type variables
     of level [checker.level] or higher with a universally quantified variable.
@@ -131,56 +153,43 @@ let gen checker =
     | Type.App(tcon, targ) ->
        helper tcon;
        helper targ
-    | Type.Var { ty = Some ty; _ } -> helper ty
-    | Type.Var ({ ty = None; quant; purity; lam_level; _ } as var) ->
-       begin match quant with
-       | Type.Exists let_level ->
-          let test =
-            match purity with
-            | Pure -> !let_level >= checker.let_level
-            | Impure ->
-               (!let_level >= checker.let_level) &&
-                 (lam_level > checker.lam_level)
-          in
-          if test then (
-            var.quant <- Type.Univ;
-            var.lam_level <- lam_level - checker.lam_level
-          )
-       | _ -> ()
-       end
+    | Type.Var { contents = Solved ty } -> helper ty
+    | Type.Var ({ contents = Wobbly wobbly } as r) ->
+       let test =
+         match wobbly.wobbly_purity with
+         | Pure -> wobbly.wobbly_let_level >= checker.let_level
+         | Impure ->
+            (wobbly.wobbly_let_level >= checker.let_level) &&
+              (wobbly.wobbly_lam_level > checker.lam_level)
+       in
+       if test then (
+         r := Type.Rigid (rigid_of_wobbly checker wobbly)
+       )
     | _ -> ()
   in helper
 
 (** [inst checker map polyty] instantiates [polyty] by replacing universally
-    quantified type variables with type variables of level
-    [checker.let_level] *)
+    quantified type variables with type variables of level [checker.let_level]
+ *)
 let inst checker map =
   let rec helper ty =
     match ty with
-    | Type.App(tcon, targ) ->
-       Type.App(helper tcon, helper targ)
-    | Type.Var { ty = Some ty; _ } -> helper ty
-    | Type.Var ({ ty = None; quant; purity; kind; lam_level; _ } as var) ->
-       begin match quant with
-       | Type.Exists _ -> ty
-       | Type.Univ ->
-          Hashtbl.find_or_add map var ~default:(fun () ->
-              Type.Var
-                (Type.fresh_var
-                   checker.tvargen purity
-                   (Type.Exists (ref checker.let_level))
-                   (checker.lam_level + lam_level) kind))
-       end
+    | Type.App(tcon, targ) -> Type.App(helper tcon, helper targ)
+    | Type.Var { contents = Solved ty } -> helper ty
+    | Type.Var { contents = Rigid rigid } ->
+       Hashtbl.find_or_add map rigid.rigid_id ~default:(fun () ->
+           Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid)))
+         )
     | _ -> ty
   in helper
 
 let make_impure checker ty =
   let tvar =
-    Type.fresh_var
+    Type.fresh_wobbly
       checker.tvargen
       Type.Impure
-      (fresh_quant checker)
-      checker.lam_level
+      ~let_level:checker.let_level
+      ~lam_level:checker.lam_level
       Kind.Mono in
   let _ = Type.occurs tvar ty in
   ()
@@ -208,7 +217,7 @@ let rec infer_pattern checker map ty pat =
   in
   match pat.Pattern.node with
   | Pattern.Con(adt, idx, pats) ->
-     let tvar_map = Hashtbl.create (module Type.Var) in
+     let tvar_map = Hashtbl.create (module Int) in
      let (_, products, adt_ty) = adt.Type.datacons.(idx) in
      let nom_ty = inst checker tvar_map adt_ty in
      let products = List.map ~f:(inst checker tvar_map) products in
@@ -219,7 +228,7 @@ let rec infer_pattern checker map ty pat =
        | [], [] -> Ok map
        | [], _  -> Message.error pat.Pattern.ann (Message.Not_enough_fields)
        | _, [] -> Message.error pat.Pattern.ann (Message.Too_many_fields)
-       | pat::pats, ty::tys ->
+       | pat :: pats, ty :: tys ->
           infer_pattern checker map ty pat >>= fun map ->
           f map pats tys
      in f map pats products
@@ -254,8 +263,12 @@ let rec infer_term checker Term.{ term; ann } =
   | Term.App(f, x) ->
      begin match infer_term checker f, infer_term checker x with
      | (Ok f, Ok x) ->
+        begin match f.Typedtree.ty with
+        | Type.App(Type.App(Type.Prim Type.Arrow, _domain), codomain) ->
+           Type.decr_lam_levels checker.lam_level codomain;
+        | _ -> ()
+        end;
         let var = fresh_tvar checker in
-        Type.decr_lam_levels checker.lam_level f.Typedtree.ty;
         Message.at ann
           (unify_types checker f.Typedtree.ty (Type.arrow x.Typedtree.ty var))
         >>| fun () ->
@@ -306,12 +319,12 @@ let rec infer_term checker Term.{ term; ann } =
      let _, product, out_ty = adt.Type.datacons.(idx) in
      let ty = Type.curry product out_ty in
      Ok { Typedtree.ann
-        ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
+        ; ty = inst checker (Hashtbl.create (module Int)) ty
         ; expr = Typedtree.Constr(idx, List.length product) }
 
   | Term.Extern_var(prefix, offset, ty) ->
      Ok { Typedtree.ann
-        ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
+        ; ty = inst checker (Hashtbl.create (module Int)) ty
         ; expr = Typedtree.Extern_var(prefix, offset) }
 
   | Term.Lam(id, body) ->
@@ -362,7 +375,7 @@ let rec infer_term checker Term.{ term; ann } =
 
   | Term.Prim(op, ty) ->
      Ok { Typedtree.ann
-        ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
+        ; ty = inst checker (Hashtbl.create (module Int)) ty
         ; expr = Typedtree.Prim op }
 
   | Term.Ref ->
@@ -389,7 +402,7 @@ let rec infer_term checker Term.{ term; ann } =
      match Hashtbl.find checker.env id with
      | Some ty ->
         Ok { Typedtree.ann
-           ; ty = inst checker (Hashtbl.create (module Type.Var)) ty
+           ; ty = inst checker (Hashtbl.create (module Int)) ty
            ; expr = Typedtree.Local_var id }
      | None -> Message.error ann (Message.Unreachable_error "Tc expr var")
 

@@ -12,6 +12,7 @@ type error =
   | Lexer_error of string
   | Mismatched_arity
   | Not_enough_fields
+  | Occurs of Type.wobbly_var * Type.t
   | Parser_error
   | Redefined_constr of string
   | Redefined_name of string

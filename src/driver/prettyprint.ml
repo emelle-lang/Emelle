@@ -53,6 +53,22 @@ let with_necessary_parens f pp parent_prec prec =
   ) else
     f pp
 
+let print_wobbly pp wobbly =
+  Buffer.add_char pp.buffer '_';
+  Buffer.add_char pp.buffer 't';
+  Buffer.add_string pp.buffer (Int.to_string wobbly.Type.wobbly_id);
+  Buffer.add_char pp.buffer '@';
+  Buffer.add_string pp.buffer (Int.to_string wobbly.wobbly_lam_level)
+
+let print_rigid pp rigid =
+  Buffer.add_char pp.buffer 't';
+  Buffer.add_string pp.buffer (Int.to_string rigid.Type.rigid_id);
+  match rigid.rigid_purity with
+  | Type.Pure -> ()
+  | Type.Impure ->
+     Buffer.add_char pp.buffer '@';
+     Buffer.add_string pp.buffer (Int.to_string rigid.rigid_lam_level)
+
 let rec print_type pp parent_prec ty =
   match ty with
   | Type.App(f, x) ->
@@ -78,16 +94,12 @@ let rec print_type pp parent_prec ty =
      Buffer.add_string pp.buffer "String"
   | Type.Prim Type.Unit ->
      Buffer.add_string pp.buffer "Unit"
-  | Type.Var { ty = Some ty; _ } ->
+  | Type.Var { contents = Solved ty; _ } ->
      print_type pp parent_prec ty
-  | Type.Var { id; quant; _ } ->
-     begin match quant with
-     | Type.Exists _ ->
-        Buffer.add_char pp.buffer '_';
-     | _ -> ()
-     end;
-     Buffer.add_char pp.buffer 't';
-     Buffer.add_string pp.buffer (Int.to_string id)
+  | Type.Var { contents = Wobbly wobbly } ->
+     print_wobbly pp wobbly
+  | Type.Var { contents = Rigid rigid } ->
+     print_rigid pp rigid
 
 let get_relevant_bindings env tctx _ty =
   let map = Env.to_map env in
@@ -103,6 +115,11 @@ let print_error pp = function
      print_ident pp id
   | Message.Kind_unification_fail _ ->
      Buffer.add_string pp.buffer "Kind unification fail"
+  | Message.Occurs(wobbly, ty) ->
+     Buffer.add_string pp.buffer "Occurs check: ";
+     print_wobbly pp wobbly;
+     Buffer.add_string pp.buffer " occurs in ";
+     print_type pp (-1) ty
   | Message.Type_unification_fail(t1, t2) ->
      Buffer.add_string pp.buffer "Type unification fail: ";
      print_type pp (-1) t1;

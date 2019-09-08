@@ -86,8 +86,6 @@ let rec pattern_of_ast_pattern st map id_opt ast_pat =
   | Ast.Wild ->
      Ok ({ Pattern.ann = ast_pat.Ast.pat_ann; node = Wild; id = id_opt }, map)
 
-
-
 (** Convert an Ast.monotype into an Type.t *)
 let rec normalize t tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
   let open Result.Monad_infix in
@@ -118,31 +116,30 @@ let rec normalize t tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
      | None -> Message.error ann (Message.Unresolved_typevar name)
 
 let fresh_kinds_of_typeparams checker =
-  List.map ~f:(fun _ -> (Kind.Var (Kind.fresh_var checker.Typecheck.kvargen)))
+  List.map ~f:(fun (name, purity) ->
+      (Kind.Var (Kind.fresh_var checker.Typecheck.kvargen), name, purity)
+    )
 
-let tvars_of_typeparams checker tvar_map kinds decls =
-  let open Result.Monad_infix in
-  let rec f tvar_map tvar_list kinds decls =
-    match kinds, decls with
-    | kind :: kinds, (str, purity) :: decls ->
+let tvars_of_typeparams checker tvar_map decls =
+  let open Result.Let_syntax in
+  let rec loop tvar_map tvar_list = function
+    | (kind, str, purity) :: decls ->
        let tvar =
          match purity with
          | Ast.Pure ->
-            Type.fresh_var checker.Typecheck.tvargen Type.Pure Type.Univ 0 kind
+            Type.fresh_rigid checker.Typecheck.tvargen Type.Pure 0 kind
          | Ast.Impure i ->
-            Type.fresh_var
-              checker.Typecheck.tvargen Type.Impure Type.Univ i kind
+            Type.fresh_rigid checker.Typecheck.tvargen Type.Impure i kind
        in
-       begin match Env.add tvar_map str (Type.Var tvar) with
+       begin match Env.add tvar_map str (Type.Var (ref (Type.Rigid tvar))) with
        | None -> Error (Message.Redefined_typevar str)
        | Some tvar_map ->
           (* Fold RIGHT, not left! *)
-          f tvar_map tvar_list kinds decls >>| fun (tvar_map, tvar_list) ->
-          (tvar_map, tvar :: tvar_list)
+          let%map tvar_map, tvar_list = loop tvar_map tvar_list decls in
+          tvar_map, tvar :: tvar_list
        end
-    | [], [] -> Ok (tvar_map, tvar_list)
-    | _ -> Error (Message.Unreachable_error "")
-  in f tvar_map [] kinds decls
+    | [] -> Ok (tvar_map, tvar_list)
+  in loop tvar_map [] decls
 
 let type_of_ast_polytype
       t checker
@@ -151,8 +148,8 @@ let type_of_ast_polytype
       ; polyty_ann = ann } =
   let open Result.Monad_infix in
   (let tvar_map = Env.empty (module String) in
-   let kinds = fresh_kinds_of_typeparams checker typeparams in
-   tvars_of_typeparams checker tvar_map kinds typeparams)
+   let typeparams = fresh_kinds_of_typeparams checker typeparams in
+   tvars_of_typeparams checker tvar_map typeparams)
   |> Message.at ann
   >>= fun (tvar_map, _) ->
   normalize t tvar_map body
@@ -388,9 +385,12 @@ let set_levels_of_tvars product =
       | Type.App(tcon, targ) ->
          f tcon;
          f targ
-      | Type.Var ({ Type.purity = Type.Impure; _ } as tvar) ->
-         tvar.Type.purity <- Type.Impure;
-         tvar.Type.lam_level <- idx
+      | Type.Var ({ contents =
+                      Type.Rigid ({ rigid_purity = Impure; _ } as tvar) } as r)
+        ->
+         r :=
+           Type.Rigid
+             { tvar with rigid_purity = Type.Impure; rigid_lam_level = idx }
       | _ -> ()
     in function
     | Type.App(Type.Prim Type.Ref, ty) -> f ty
@@ -400,7 +400,9 @@ let set_levels_of_tvars product =
 (** Convert an [Ast.adt] into a [Type.adt] *)
 let type_adt_of_ast_adt t checker adt =
   let open Result.Monad_infix in
-  let kinds = fresh_kinds_of_typeparams checker adt.Ast.adt_params in
+  let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.adt_params in
+  let tparams = fresh_kinds_of_typeparams checker tparams in
+  let kinds = List.map ~f:(fun (k, _, _) -> k) tparams in
   let kind = Kind.curry kinds Kind.Mono in
   let constr_map = Hashtbl.create (module String) in
   List.fold_right
@@ -414,8 +416,7 @@ let type_adt_of_ast_adt t checker adt =
       | `Duplicate -> Message.error ann (Message.Redefined_constr name)
       | `Ok ->
          (let tvar_map = Env.empty (module String) in
-          let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.adt_params in
-          Message.at ann (tvars_of_typeparams checker tvar_map kinds tparams)
+          Message.at ann (tvars_of_typeparams checker tvar_map tparams)
           >>= fun (tvar_map, tvar_list) ->
           List.fold_right ~f:(fun ty acc ->
               acc >>= fun products ->
@@ -431,7 +432,9 @@ let type_adt_of_ast_adt t checker adt =
               (Type.Nominal
                  { Qual_id.prefix = checker.package.Package.prefix
                  ; name = adt.Ast.adt_name })
-              (List.map ~f:(fun var -> Type.Var var) tvar_list)
+              (List.map ~f:(fun var ->
+                   Type.Var (ref (Type.Rigid var))
+                 ) tvar_list)
           in
           set_levels_of_tvars product;
           ((name, product, out_ty) :: constr_list, idx - 1))
