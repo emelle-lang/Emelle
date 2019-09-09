@@ -1,7 +1,7 @@
 # Pattern Match Compilation
 
-Emelle uses Luc Maranget's algorithm for pattern match compilation as described
-in "Compiling Pattern Matching to Good Decision Trees."
+Emmeline uses Luc Maranget's algorithm for pattern match compilation as
+described in "Compiling Pattern Matching to Good Decision Trees."
 
     p ::= C p1 .. pN  -- Constructor pattern
           _           -- Wildcard pattern

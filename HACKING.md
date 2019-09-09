@@ -1,19 +1,17 @@
-# Hacking on the Emelle compiler
+# Hacking on the Emmeline compiler
 
 The compiler is separated into:
-- The Emelle library, located in `src/`
-- The Emelle executable, located in `app/`
-- The web-based interface, located in `try/`
-
-The Emelle library does not depend on Stdio, so it may be compiled to
-JavaScript.
+- The Emmeline library, located in `src/`
+- The Emmeline executable, located in `app/`
+- The web text interface, located in `try/`
+- The web block-based interface, located in `editor/`
 
 ## Compiler design
 
 The compiler phases are as follows, divided into subdirectories:
 
 - `src/syntax`: Lexes and parses the source text into an AST
-- `src/desugar`: Elaborates the AST into a core form for the typechecker
+- `src/desugar`: Desugars the AST into a core form for the typechecker
 - `src/typing`: Performs typechecking and kindchecking, emitting a typed tree
 - `src/anf`: Performs A-normalization into Administrative Normal Form (ANF),
   where each intermediate expression is let-bound, performs pattern-match

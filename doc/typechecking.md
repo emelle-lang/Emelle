@@ -24,8 +24,8 @@ produce the type scheme of a binding. Instantiation replaces rigid type
 variables in a type scheme with fresh wobbly ones to give the monotype of a
 variable use site.
 
-Emelle uses level-based generalization like that in the OCaml compiler. When the
-typechecker visits the definition of a let-binding, it increments the "let
+Emmeline uses level-based generalization like that in the OCaml compiler. When
+the typechecker visits the definition of a let-binding, it increments the "let
 level." Type variables are associated with the level in which they were
 generated.
 
@@ -44,8 +44,8 @@ For example:
     r := Some 0;
     r := Some "foo"
 
-If `r` were generalized as `forall a. Option a`, values of different types could
-be used together, such as `0` and `"foo"`, making the type system unsound.
+If `r` were generalized as `forall a. Ref (Option a)`, values of different types
+could be used together, such as `0` and `"foo"`, making the type system unsound.
 
 Traditionally, MLs have solved this issue with the value restriction, where only
 syntactic "value" expressions are generalized. The value restriction hinders
