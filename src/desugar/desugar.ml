@@ -147,12 +147,12 @@ let type_of_ast_polytype
       ; polyty_body = body
       ; polyty_ann = ann } =
   let open Result.Monad_infix in
-  (let tvar_map = Env.empty (module String) in
-   let typeparams = fresh_kinds_of_typeparams checker typeparams in
-   tvars_of_typeparams checker tvar_map typeparams)
-  |> Message.at ann
-  >>= fun (tvar_map, _) ->
-  normalize t tvar_map body
+  let tvar_map = Env.empty (module String) in
+  let typeparams = fresh_kinds_of_typeparams checker typeparams in
+  Message.at ann (tvars_of_typeparams checker tvar_map typeparams)
+  >>= fun (tvar_map, tvar_list) ->
+  normalize t tvar_map body >>| fun body ->
+  Type.Forall(tvar_list, body)
 
 let find_var t env ann qual_id =
   match qual_id with
@@ -437,7 +437,7 @@ let type_adt_of_ast_adt t checker adt =
                  ) tvar_list)
           in
           set_levels_of_tvars product;
-          ((name, product, out_ty) :: constr_list, idx - 1))
+          ((name, tvar_list, product, out_ty) :: constr_list, idx - 1))
     ) >>| fun (datacons, _) ->
   let datacons = Array.of_list datacons in
   { Type.name = adt.Ast.adt_name

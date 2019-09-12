@@ -1,8 +1,9 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type env = (string, Ident.t, String.comparator_witness) Env.t
@@ -12,12 +13,13 @@ type ('ann, 'fix) term =
   | Assign of 'fix * 'fix
   | Case of 'fix list * ('ann, 'fix) branch list
   | Constr of Type.adt * int
-  | Extern_var of Qual_id.Prefix.t * int * Type.t
+  | Extern_var of Qual_id.Prefix.t * int * Type.polytype
   | Lam of Ident.t * 'fix
   | Let of Ident.t * 'fix * 'fix
   | Let_rec of ('ann, 'fix) bind_group * 'fix
   | Lit of Literal.t
-  | Prim of string * Type.t
+  | Prim of string * Type.polytype
+  | Record of 'fix Type.record
   | Ref
   | Seq of 'fix * 'fix
   | Typed_hole of env

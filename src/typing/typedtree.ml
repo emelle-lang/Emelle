@@ -19,9 +19,10 @@ type ('ann, 'a) expr =
   | Lit of Literal.t
   | Local_var of Ident.t
   | Prim of string
+  | Record of 'a list
   | Ref
   | Seq of 'a * 'a
-  | Typed_hole of Term.env * (Ident.t, Type.t) Hashtbl.t * Type.t
+  | Typed_hole of Term.env * (Ident.t, Type.polytype) Hashtbl.t * Type.t
 
 type 'a t = {
     ann : 'a;
@@ -44,5 +45,5 @@ type 'a file = {
     items : 'a item list;
     exports : string list;
     env : (string, Ident.t, String.comparator_witness) Env.t;
-    typing_ctx : (Ident.t, Type.t) Hashtbl.t
+    typing_ctx : (Ident.t, Type.polytype) Hashtbl.t
   }

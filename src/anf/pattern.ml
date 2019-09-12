@@ -79,7 +79,7 @@ let rec specialize constr product occurrence rows =
   let helper row rows =
     match row.patterns with
     | [] -> None
-    | first_pat::rest_pats ->
+    | first_pat :: rest_pats ->
        let bindings =
          match first_pat.id with
          | None -> row.bindings
@@ -87,13 +87,13 @@ let rec specialize constr product occurrence rows =
        in
        let rec fill acc next = function
          | [] -> acc
-         | _::xs -> fill (next::acc) next xs
+         | _ :: xs -> fill (next :: acc) next xs
        in
        match first_pat.node with
        | Con(_, name, cpats) when name = constr ->
           Some ({ row with
                   patterns = cpats@rest_pats
-                ; bindings }::rows)
+                ; bindings } :: rows)
        | Con _ -> Some rows
        | Deref _ -> None
        | Unit | Wild ->
@@ -101,16 +101,16 @@ let rec specialize constr product occurrence rows =
                   patterns =
                     fill rest_pats
                       { ann = first_pat.ann; node = Wild; id = None } product
-                ; bindings }::rows)
+                ; bindings } :: rows)
        | Or(p1, p2) ->
           specialize constr product occurrence
             [{ row with
-               patterns = p1::rest_pats
+               patterns = p1 :: rest_pats
              ; bindings }]
           >>= fun mat1 ->
           specialize constr product occurrence
             [{ row with
-               patterns = p2::rest_pats
+               patterns = p2 :: rest_pats
              ; bindings }]
           >>| fun mat2 ->
           mat1@mat2@rows
@@ -220,7 +220,7 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
                  Array.foldi
                    alg.Type.datacons
                    ~init:(Ok (Map.empty (module Int)))
-                   ~f:(fun id acc (_, product, _) ->
+                   ~f:(fun id acc (_, _, product, _) ->
                      acc >>= fun jump_tbl ->
                      (* Just like how the matched value is popped off the stack
                         and its children pushed on the stack, pop off the

@@ -62,12 +62,7 @@ let print_wobbly pp wobbly =
 
 let print_rigid pp rigid =
   Buffer.add_char pp.buffer 't';
-  Buffer.add_string pp.buffer (Int.to_string rigid.Type.rigid_id);
-  match rigid.rigid_purity with
-  | Type.Pure -> ()
-  | Type.Impure ->
-     Buffer.add_char pp.buffer '@';
-     Buffer.add_string pp.buffer (Int.to_string rigid.rigid_lam_level)
+  Buffer.add_string pp.buffer (Int.to_string rigid.Type.rigid_id)
 
 let rec print_type pp parent_prec ty =
   match ty with
@@ -94,12 +89,28 @@ let rec print_type pp parent_prec ty =
      Buffer.add_string pp.buffer "String"
   | Type.Prim Type.Unit ->
      Buffer.add_string pp.buffer "Unit"
-  | Type.Var { contents = Solved ty; _ } ->
+  | Type.Var { contents = Solved ty } ->
      print_type pp parent_prec ty
   | Type.Var { contents = Wobbly wobbly } ->
      print_wobbly pp wobbly
   | Type.Var { contents = Rigid rigid } ->
      print_rigid pp rigid
+
+let print_polytype pp (Type.Forall(tvars, ty)) =
+  Buffer.add_string pp.buffer "forall ";
+  List.iter tvars ~f:(fun tvar ->
+      Buffer.add_char pp.buffer 't';
+      Buffer.add_string pp.buffer (Int.to_string tvar.Type.rigid_id);
+      begin match tvar.rigid_purity with
+      | Type.Pure -> ()
+      | Type.Impure ->
+         Buffer.add_char pp.buffer '@';
+         Buffer.add_string pp.buffer (Int.to_string tvar.rigid_lam_level)
+      end;
+      Buffer.add_char pp.buffer ' '
+    );
+  Buffer.add_char pp.buffer '.';
+  print_type pp (-1) ty
 
 let get_relevant_bindings env tctx _ty =
   let map = Env.to_map env in
@@ -132,7 +143,7 @@ let print_error pp = function
      List.iter rel_bindings ~f:(fun (name, ty) ->
          Buffer.add_string pp.buffer name;
          Buffer.add_string pp.buffer " : ";
-         print_type pp (-1) ty;
+         print_polytype pp ty;
          newline pp
        );
      Buffer.add_string pp.buffer "_______________________";

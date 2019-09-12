@@ -22,12 +22,11 @@ let () =
     >>= fun term ->
     Typecheck.infer_term typechecker term
     >>| fun typedtree ->
-    Typecheck.gen typechecker typedtree.Typedtree.ty;
-    typedtree.Typedtree.ty
+    Typecheck.gen typechecker typedtree.Typedtree.ty
   with
   | Ok ty ->
      let pprinter = Prettyprint.create () in
-     Prettyprint.print_type pprinter (-1) ty;
+     Prettyprint.print_polytype pprinter ty;
      print_endline (Prettyprint.to_string pprinter)
   | Error e ->
      let pp = Prettyprint.create () in

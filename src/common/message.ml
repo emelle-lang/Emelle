@@ -1,13 +1,15 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
    file, You can obtain one at http://mozilla.org/MPL/2.0/. *)
+
 open Base
 
 type error =
   | Abstract_type of Qual_id.t
   | And_error of error * error
+  | Escaping_rigid of Type.rigid_var
   | Kind_unification_fail of Kind.t * Kind.t
   | Lexer_error of string
   | Mismatched_arity
@@ -21,7 +23,7 @@ type error =
   | Too_many_fields
   | Type_unification_fail of Type.t * Type.t
   | Typed_hole of (string, Ident.t, String.comparator_witness) Env.t
-                  * (Ident.t, Type.t) Hashtbl.t * Type.t
+                  * (Ident.t, Type.polytype) Hashtbl.t * Type.t
   | Unimplemented of string
   | Unknown_constr of Qual_id.t * string
   | Unreachable_error of string

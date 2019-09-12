@@ -22,6 +22,7 @@ type prim =
 [@@deriving compare, sexp]
 
 (** A type variable is either:
+    - Infinite
     - Rigid
     - Solved
     - Wobbly *)
@@ -53,6 +54,8 @@ and wobbly_var = {
     mutable wobbly_let_level : int;
   }
 
+type polytype = Forall of (rigid_var list * t) [@@unboxed]
+
 (** Type [vargen] is the generator of fresh type variables. *)
 type vargen = int ref
 
@@ -60,7 +63,14 @@ type adt = {
     name : string;
     adt_kind : Kind.t;
     datacon_names : (string, int) Hashtbl.t;
-    datacons : (string * t list * t) array
+    datacons : (string * rigid_var list * t list * t) array
+  }
+
+type 'a record = {
+    record_name : Qual_id.t;
+    record_tparams : rigid_var list;
+    field_names : (string, int) Hashtbl.t;
+    fields : (string * t * 'a) array;
   }
 
 type decl =
@@ -103,14 +113,14 @@ let with_params ty =
 let rec curry input_tys output_ty =
   match input_tys with
   | [] -> output_ty
-  | (ty::tys) ->
+  | ty :: tys ->
      let out_ty = curry tys output_ty in
      arrow ty out_ty
 
 (** Given an ADT and one of its constructors, return the constructor's type *)
 let type_of_constr adt constr =
-  let _, product, output_ty = adt.datacons.(constr) in
-  curry product output_ty
+  let _, tvars, product, output_ty = adt.datacons.(constr) in
+  Forall(tvars, curry product output_ty)
 
 let kind_of_adt adt = adt.adt_kind
 
@@ -123,43 +133,13 @@ let kind_of_prim = function
   | String -> Kind.Mono
   | Unit -> Kind.Mono
 
-(** [occurs wobbly ty] performs the occurs check, returning true if [wobbly]
-    occurs in [ty]. It ignores universally quantified type variables and adjusts
-    the levels of unassigned typevars when necessary. *)
-let rec occurs wobbly ty =
-  match ty with
-  | App(tcon, targ) -> occurs wobbly tcon || occurs wobbly targ
-  | Nominal _ -> false
-  | Prim _ -> false
-  | Var { contents = Solved ty } -> occurs wobbly ty
-  | Var { contents = Rigid _ } -> false
-  | Var { contents = Wobbly wobbly2 }
-       when wobbly.wobbly_id = wobbly2.wobbly_id ->
-     true
-  | Var { contents = Wobbly wobbly2 } ->
-     (* If the type variable being solved is impure, every type variable in its
-        definition must have its lambda-level or lower
-        If the type variable being solved is impure, then every type variable in
-        the definition must be impure *)
-     begin match wobbly.wobbly_purity with
-     | Impure ->
-        wobbly2.wobbly_purity <- wobbly.wobbly_purity;
-        if wobbly2.wobbly_lam_level > wobbly.wobbly_lam_level then
-          wobbly2.wobbly_lam_level <- wobbly.wobbly_lam_level
-     | _ -> ()
-     end;
-     if wobbly2.wobbly_let_level > wobbly.wobbly_let_level then (
-       wobbly2.wobbly_let_level <- wobbly.wobbly_let_level
-     );
-     false
-
 let rec decr_lam_levels level = function
   | App(tcon, targ) ->
      decr_lam_levels level tcon;
      decr_lam_levels level targ
   | Nominal _ -> ()
   | Prim _ -> ()
-  | Var { contents = Solved ty; _ } -> decr_lam_levels level ty
+  | Var { contents = Solved ty } -> decr_lam_levels level ty
   | Var { contents = Wobbly wobbly } ->
      if wobbly.wobbly_lam_level > level && wobbly.wobbly_lam_level > 0 then
        wobbly.wobbly_lam_level <- wobbly.wobbly_lam_level - 1

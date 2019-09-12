@@ -20,7 +20,7 @@ type t = {
     prefix : Qual_id.Prefix.t;
     typedefs : (string, ty_state ref) Hashtbl.t;
     datacons : (string, Type.adt * int) Hashtbl.t;
-    vals : (string, Type.t * int) Hashtbl.t
+    vals : (string, Type.polytype * int) Hashtbl.t
   }
 
 let create prefix =

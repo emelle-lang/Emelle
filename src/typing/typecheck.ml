@@ -9,7 +9,7 @@ open Base
 type t = {
     package : Package.t;
     packages : (Qual_id.Prefix.t, Package.t) Hashtbl.t;
-    env : (Ident.t, Type.t) Hashtbl.t;
+    env : (Ident.t, Type.polytype) Hashtbl.t;
     let_level : int;
     lam_level : int;
     tvargen : Type.vargen;
@@ -84,6 +84,47 @@ let rec kind_of_type checker ty =
   | Type.Var { contents = Wobbly wobbly } -> Ok wobbly.Type.wobbly_kind
   | Type.Var { contents = Rigid var } -> Ok var.Type.rigid_kind
 
+(** [occurs wobbly ty] performs the occurs check, resulting in an error if:
+    - [wobbly] occurs in [ty]
+    - A rigid type variable occurs in [ty]
+
+    This function also adjusts the levels of unassigned typevars when necessary.
+ *)
+let occurs checker wobbly typ =
+  let open Result.Let_syntax in
+  let rec f = function
+    | Type.App(tcon, targ) ->
+       let%bind () = f tcon in
+       f targ
+    | Nominal _ -> Ok ()
+    | Prim _ -> Ok ()
+    | Var { contents = Solved ty } -> f ty
+    | Var { contents = Rigid r } ->
+       if wobbly.Type.wobbly_let_level < checker.let_level then
+         Error (Message.Escaping_rigid r)
+       else
+         Ok ()
+    | Var { contents = Wobbly wobbly2 }
+         when wobbly.wobbly_id = wobbly2.wobbly_id ->
+       Error (Message.Occurs(wobbly, typ))
+    | Var { contents = Wobbly wobbly2 } ->
+       (* If the type variable being solved is impure, every type variable in
+          its definition must have its lambda-level or lower
+          If the type variable being solved is impure, then every type variable
+          in the definition must be impure *)
+       begin match wobbly.wobbly_purity with
+       | Impure ->
+          wobbly2.wobbly_purity <- wobbly.wobbly_purity;
+          if wobbly2.wobbly_lam_level > wobbly.wobbly_lam_level then
+            wobbly2.wobbly_lam_level <- wobbly.wobbly_lam_level
+       | _ -> ()
+       end;
+       if wobbly2.wobbly_let_level > wobbly.wobbly_let_level then (
+         wobbly2.wobbly_let_level <- wobbly.wobbly_let_level
+       );
+       Ok ()
+  in f typ
+
 (** [unify_types typechecker type0 type1] unifies [type0] and [type1], returning
     a result with any unification errors. *)
 let rec unify_types checker lhs rhs =
@@ -105,21 +146,21 @@ let rec unify_types checker lhs rhs =
     | Type.Prim lprim, Type.Prim rprim
          when Type.equal_prim lprim rprim ->
        Ok ()
-    | Type.Var { contents = Wobbly wobbly1 }
-    , Type.Var { contents = Wobbly wobbly2 }
-         when wobbly1.wobbly_id = wobbly2.wobbly_id ->
-       Ok ()
     | Type.Var { contents = Solved ty0 }, ty1
     | ty0, Type.Var { contents = Solved ty1 } ->
        unify_types checker ty0 ty1
+    | Type.Var { contents = Rigid rigid1 }
+    , Type.Var { contents = Rigid rigid2 }
+         when rigid1.rigid_id = rigid2.rigid_id -> Ok ()
+    | Type.Var { contents = Wobbly wobbly1 }
+    , Type.Var { contents = Wobbly wobbly2 }
+         when wobbly1.wobbly_id = wobbly2.wobbly_id -> Ok ()
     | Type.Var ({ contents = Wobbly wobbly } as r), ty
     | ty, Type.Var ({ contents = Wobbly wobbly } as r) ->
-       if Type.occurs wobbly ty then
-         Error (Message.Occurs(wobbly, ty))
-       else
-         let%bind kind = kind_of_type checker ty in
-         let%map () = unify_kinds kind wobbly.wobbly_kind in
-         r := Type.Solved ty
+       let%bind () = occurs checker wobbly ty in
+       let%bind kind = kind_of_type checker ty in
+       let%map () = unify_kinds kind wobbly.wobbly_kind in
+       r := Type.Solved ty
     | _ -> Error (Message.Type_unification_fail(lhs, rhs))
 
 let in_new_let_level f self =
@@ -147,14 +188,15 @@ let wobbly_of_rigid checker rigid =
     of level [checker.level] or higher with a universally quantified variable.
     Universally quantified variables really shouldn't appear in [ty], but the
     function just ignores them. *)
-let gen checker =
-  let rec helper ty =
+let gen checker ty =
+  let rec helper acc ty =
     match ty with
     | Type.App(tcon, targ) ->
-       helper tcon;
-       helper targ
-    | Type.Var { contents = Solved ty } -> helper ty
-    | Type.Var ({ contents = Wobbly wobbly } as r) ->
+       let tcon, acc = helper acc tcon in
+       let targ, acc = helper acc targ in
+       (Type.App(tcon, targ), acc)
+    | Type.Var { contents = Solved ty } -> helper acc ty
+    | Type.Var { contents = Wobbly wobbly } ->
        let test =
          match wobbly.wobbly_purity with
          | Pure -> wobbly.wobbly_let_level >= checker.let_level
@@ -163,25 +205,55 @@ let gen checker =
               (wobbly.wobbly_lam_level > checker.lam_level)
        in
        if test then (
-         r := Type.Rigid (rigid_of_wobbly checker wobbly)
-       )
-    | _ -> ()
-  in helper
+         let rigid = (rigid_of_wobbly checker wobbly) in
+         (Type.Var (ref (Type.Rigid rigid)), rigid :: acc)
+       ) else
+         (ty, acc)
+    | Type.Nominal _ | Type.Prim _  | Type.Var { contents = Rigid _ } -> ty, acc
+  in
+  let ty, tvars = helper [] ty in
+  Type.Forall
+    ( List.dedup_and_sort
+        ~compare:(fun l r -> Int.compare l.Type.rigid_id r.rigid_id) tvars
+    , ty )
 
-(** [inst checker map polyty] instantiates [polyty] by replacing universally
-    quantified type variables with type variables of level [checker.let_level]
- *)
-let inst checker map =
+(** [inst_selective map ty] instantiates [ty] by replacing the
+    universally quantified type variables contained in [map] with their
+    corresponding values. *)
+let inst_selective map =
   let rec helper ty =
     match ty with
     | Type.App(tcon, targ) -> Type.App(helper tcon, helper targ)
     | Type.Var { contents = Solved ty } -> helper ty
     | Type.Var { contents = Rigid rigid } ->
-       Hashtbl.find_or_add map rigid.rigid_id ~default:(fun () ->
-           Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid)))
-         )
+       begin match Hashtbl.find map rigid.rigid_id with
+       | Some x -> x
+       | None -> Type.Var (ref (Type.Rigid rigid))
+       end
     | _ -> ty
   in helper
+
+let fresh_tvars checker tvars =
+  let map = Hashtbl.create (module Int) in
+  List.iter tvars ~f:(fun rigid ->
+      Hashtbl.set map
+        ~key:rigid.Type.rigid_id
+        ~data:(Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid))))
+    );
+  map
+
+(** [inst checker polyty] instantiates [polyty] by replacing
+    universally quantified type variables with type variables of level
+    [checker.let_level]
+ *)
+let inst checker (Type.Forall(tvars, body)) =
+  let map = fresh_tvars checker tvars in
+  List.iter tvars ~f:(fun rigid ->
+      Hashtbl.set map
+        ~key:rigid.Type.rigid_id
+        ~data:(Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid))))
+    );
+  inst_selective map body
 
 let make_impure checker ty =
   let tvar =
@@ -191,8 +263,8 @@ let make_impure checker ty =
       ~let_level:checker.let_level
       ~lam_level:checker.lam_level
       Kind.Mono in
-  let _ = Type.occurs tvar ty in
-  ()
+  (* Call occurs just for the side effects *)
+  ignore (occurs checker tvar ty)
 
 (** [infer_pattern checker map ty pat] associates [ty] with [pat]'s register
     if it has any while unifying any type constraints that arise from [pat]. *)
@@ -217,17 +289,17 @@ let rec infer_pattern checker map ty pat =
   in
   match pat.Pattern.node with
   | Pattern.Con(adt, idx, pats) ->
-     let tvar_map = Hashtbl.create (module Int) in
-     let (_, products, adt_ty) = adt.Type.datacons.(idx) in
-     let nom_ty = inst checker tvar_map adt_ty in
-     let products = List.map ~f:(inst checker tvar_map) products in
+     let (_, quant_tvars, products, adt_ty) = adt.Type.datacons.(idx) in
+     let tvar_map = fresh_tvars checker quant_tvars in
+     let nom_ty = inst_selective tvar_map adt_ty in
+     let products = List.map ~f:(inst_selective tvar_map) products in
      Message.at pat.Pattern.ann (unify_types checker ty nom_ty) >>= fun () ->
      type_binding pat >>= fun map ->
      let rec f map pats tys =
        match pats, tys with
        | [], [] -> Ok map
-       | [], _  -> Message.error pat.Pattern.ann (Message.Not_enough_fields)
-       | _, [] -> Message.error pat.Pattern.ann (Message.Too_many_fields)
+       | [], _  -> Message.error pat.Pattern.ann Message.Not_enough_fields
+       | _, [] -> Message.error pat.Pattern.ann Message.Too_many_fields
        | pat :: pats, ty :: tys ->
           infer_pattern checker map ty pat >>= fun map ->
           f map pats tys
@@ -296,7 +368,7 @@ let rec infer_term checker Term.{ term; ann } =
          in_new_let_level (fun checker ->
              infer_term checker scrutinee
            ) checker >>| fun expr ->
-         expr::list
+         expr :: list
        ) ~init:(Ok []) scrutinees >>= fun scruts ->
      List.fold_right ~f:(fun (pats, ids, consequent) acc ->
          acc >>= fun (idx, matrix, branches) ->
@@ -316,21 +388,21 @@ let rec infer_term checker Term.{ term; ann } =
      ; expr = Typedtree.Case(scruts, matrix, branches) }
 
   | Term.Constr(adt, idx) ->
-     let _, product, out_ty = adt.Type.datacons.(idx) in
-     let ty = Type.curry product out_ty in
+     let _, _, product, _ = adt.datacons.(idx) in
+     let polyty = Type.type_of_constr adt idx in
      Ok { Typedtree.ann
-        ; ty = inst checker (Hashtbl.create (module Int)) ty
+        ; ty = inst checker polyty
         ; expr = Typedtree.Constr(idx, List.length product) }
 
   | Term.Extern_var(prefix, offset, ty) ->
      Ok { Typedtree.ann
-        ; ty = inst checker (Hashtbl.create (module Int)) ty
+        ; ty = inst checker ty
         ; expr = Typedtree.Extern_var(prefix, offset) }
 
   | Term.Lam(id, body) ->
      in_new_lam_level (fun checker ->
          let var = fresh_tvar checker in
-         Hashtbl.add_exn checker.env ~key:id ~data:var;
+         Hashtbl.add_exn checker.env ~key:id ~data:(Type.Forall([], var));
          infer_term checker body >>| fun body ->
          { Typedtree.ann
          ; ty = Type.arrow var body.Typedtree.ty
@@ -341,8 +413,8 @@ let rec infer_term checker Term.{ term; ann } =
      in_new_let_level (fun checker ->
          infer_term checker rhs
        ) checker >>= fun rhs ->
-     gen checker rhs.Typedtree.ty;
-     Hashtbl.add_exn checker.env ~key:lhs ~data:rhs.Typedtree.ty;
+     let polytype = gen checker rhs.Typedtree.ty in
+     Hashtbl.add_exn checker.env ~key:lhs ~data:polytype;
      infer_term checker body >>| fun body ->
      { Typedtree.ann
      ; ty = body.Typedtree.ty
@@ -350,13 +422,6 @@ let rec infer_term checker Term.{ term; ann } =
 
   | Term.Let_rec(bindings, body) ->
      infer_rec_bindings checker bindings >>= fun bindings ->
-     (* In the RHS of let-rec bindings, LHS names aren't quantified. Here,
-        quantify them for the let-rec body. *)
-     List.iter ~f:(fun (lhs, _) ->
-         match Hashtbl.find checker.env lhs with
-         | Some ty -> gen checker ty
-         | None -> ()
-       ) bindings;
      infer_term checker body >>| fun body ->
      { Typedtree.ann
      ; ty = body.Typedtree.ty; expr = Typedtree.Let_rec(bindings, body) }
@@ -375,8 +440,34 @@ let rec infer_term checker Term.{ term; ann } =
 
   | Term.Prim(op, ty) ->
      Ok { Typedtree.ann
-        ; ty = inst checker (Hashtbl.create (module Int)) ty
+        ; ty = inst checker ty
         ; expr = Typedtree.Prim op }
+
+  | Term.Record record ->
+     let inst_map = Hashtbl.create (module Int) in
+     (* The record's type constructor, applied to fresh type variables *)
+     let ty =
+       List.fold_left record.Type.record_tparams
+         ~init:(Type.Nominal record.Type.record_name)
+         ~f:(fun ty rigid_var ->
+           let var =
+             Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid_var)))
+           in
+           Hashtbl.set inst_map ~key:rigid_var.Type.rigid_id ~data:var;
+           Type.App(ty, var)
+         )
+     in
+     Array.fold_right record.Type.fields ~init:(Ok [])
+       ~f:(fun (_, field_ty, next) acc ->
+         acc >>= fun acc ->
+         let ty = inst_selective inst_map field_ty in
+         in_new_let_level (fun checker ->
+             infer_term checker next >>= fun next ->
+             Message.at ann (unify_types checker next.Typedtree.ty ty)
+             >>| fun () -> next :: acc
+           ) checker
+       ) >>| fun members ->
+     { Typedtree.ann; ty; expr = Typedtree.Record members }
 
   | Term.Ref ->
      in_new_lam_level (fun checker ->
@@ -396,13 +487,15 @@ let rec infer_term checker Term.{ term; ann } =
 
   | Term.Typed_hole env ->
      let ty = fresh_tvar checker in
-     Ok { Typedtree.ann; ty; expr = Typedtree.Typed_hole(env, checker.env, ty) }
+     Ok { Typedtree.ann
+        ; ty
+        ; expr = Typedtree.Typed_hole(env, checker.env, ty) }
 
   | Term.Var id ->
      match Hashtbl.find checker.env id with
      | Some ty ->
         Ok { Typedtree.ann
-           ; ty = inst checker (Hashtbl.create (module Int)) ty
+           ; ty = inst checker ty
            ; expr = Typedtree.Local_var id }
      | None -> Message.error ann (Message.Unreachable_error "Tc expr var")
 
@@ -412,7 +505,7 @@ and infer_branch checker scruts pats =
     match scruts, pats with
     | [], [] -> Ok map
     | [], _ | _, [] -> Message.unreachable "infer_branch"
-    | scrut::scruts, pat::pats ->
+    | scrut :: scruts, pat :: pats ->
        infer_pattern checker map scrut.Typedtree.ty pat
        >>= fun map ->
        f map scruts pats
@@ -421,8 +514,8 @@ and infer_branch checker scruts pats =
   in_new_let_level (fun checker ->
       f map scruts pats >>| fun map ->
       Map.iteri ~f:(fun ~key ~data ->
-          gen checker data;
-          let _ = Hashtbl.add checker.env ~key ~data in
+          let polytype = gen checker data in
+          let _ = Hashtbl.add checker.env ~key ~data:polytype in
           ()
         ) map
     ) checker
@@ -432,13 +525,18 @@ and infer_rec_bindings checker bindings =
   in_new_let_level (fun checker ->
       (* Associate each new binding with a fresh type variable *)
       let f { Term.rec_lhs = lhs; _ } =
-        Hashtbl.add_exn checker.env ~key:lhs ~data:(fresh_tvar checker)
+        let tvar =
+          Type.fresh_wobbly checker.tvargen Type.Pure
+            ~let_level:checker.let_level ~lam_level:checker.lam_level Kind.Mono
+        in
+        Hashtbl.set checker.env ~key:lhs
+          ~data:(Type.Forall([], Type.Var (ref (Type.Wobbly tvar))))
       in
       List.iter ~f:f bindings;
       (* Type infer the RHS of each new binding and unify the result with
          the type variable *)
       let f { Term.rec_ann = ann; rec_lhs = lhs; rec_rhs = rhs } acc =
-        let tvar = Hashtbl.find_exn checker.env lhs in
+        let Type.Forall(_, tvar) = Hashtbl.find_exn checker.env lhs in
         infer_term checker rhs >>= fun rhs ->
         match
           acc, Message.at ann (unify_types checker tvar rhs.Typedtree.ty)
@@ -446,8 +544,19 @@ and infer_rec_bindings checker bindings =
         | Ok acc, Ok () -> Ok ((lhs, rhs)::acc)
         | Ok _, Error e | Error e, Ok () -> Error e
         | Error e1, Error e2 -> Error (Message.And(e1, e2))
-      in List.fold_right ~f:f ~init:(Ok []) bindings
-    ) checker
+      in
+      List.fold_right ~f:f ~init:(Ok []) bindings
+    ) checker >>| fun bindings ->
+  (* In the RHS of let-rec bindings, LHS names aren't quantified. Here,
+     quantify them for the let-rec body. *)
+  List.iter ~f:(fun (lhs, _) ->
+      match Hashtbl.find checker.env lhs with
+      | Some (Type.Forall(_, ty)) ->
+         let polyty = gen checker ty in
+         Hashtbl.set checker.env ~key:lhs ~data:polyty
+      | None -> assert false
+    ) bindings;
+  bindings
 
 let typecheck typechecker term_file =
   let open Result.Monad_infix in
@@ -468,11 +577,11 @@ let typecheck typechecker term_file =
              ; bindings = Map.empty (module Ident)
              ; action = 0 } ] in
          { Typedtree.item_ann = next.Term.item_ann
-         ; item_node = Typedtree.Top_let(scruts, ids, matrix) }::list
+         ; item_node = Typedtree.Top_let(scruts, ids, matrix) } :: list
       | Term.Top_let_rec bindings ->
          infer_rec_bindings typechecker bindings >>| fun bindings ->
          { Typedtree.item_ann = next.Term.item_ann
-         ; item_node = Typedtree.Top_let_rec bindings }::list
+         ; item_node = Typedtree.Top_let_rec bindings } :: list
     ) ~init:(Ok []) term_file.Term.items
   >>| fun items ->
   { Typedtree.top_ann = term_file.Term.top_ann

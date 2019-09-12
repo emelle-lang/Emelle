@@ -203,8 +203,7 @@ and instr_of_typedtree
              ) ~init:(Ok []) branches
          in cont (Anf.Case(tree, branches))
        )
-  | Typedtree.Constr _ | Typedtree.Extern_var _
-  | Typedtree.Local_var _ | Typedtree.Lit _ ->
+  | Constr _ | Extern_var _ | Local_var _ | Lit _ ->
      operand_of_typedtree self typedtree ~cont:(fun operand ->
          cont (Anf.Load operand)
        )
@@ -229,6 +228,13 @@ and instr_of_typedtree
          { Anf.ann; instr = Anf.Let_rec(bindings, body) }
        )
   | Typedtree.Prim op -> cont (Prim op)
+  | Typedtree.Record record ->
+     (* Accumulator is a function because of CPS *)
+     List.fold_right ~f:(fun arg f args ->
+         operand_of_typedtree self arg ~cont:(fun arg -> f (arg :: args))
+       ) ~init:(fun args ->
+         cont (Anf.Box (0, args))
+       ) record []
   | Typedtree.Ref ->
      let reg_gen = Ir.Register.create_gen () in
      let reg = Ir.Register.fresh reg_gen in
