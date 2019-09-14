@@ -93,10 +93,27 @@ type 'a adt = {
     adt_datacons : 'a datacon list
   }
 
+type 'a field = {
+    field_ann : 'a;
+    field_name : string;
+    field_polytype : 'a polytype;
+  }
+
+type 'a record = {
+    record_ann : 'a;
+    record_name : string;
+    record_params : string list;
+    record_fields : 'a field list;
+  }
+
+type 'a type_def =
+  | Adt of 'a adt
+  | Record of 'a record
+
 type 'a item' =
   | Let of 'a let_binding list
   | Let_rec of 'a rec_binding list
-  | Type of 'a adt * 'a adt list
+  | Type of 'a type_def * 'a type_def list
 
 type 'a item = {
     item_ann : 'a;

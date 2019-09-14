@@ -447,8 +447,8 @@ let rec infer_term checker Term.{ term; ann } =
      let inst_map = Hashtbl.create (module Int) in
      (* The record's type constructor, applied to fresh type variables *)
      let ty =
-       List.fold_left record.Type.record_tparams
-         ~init:(Type.Nominal record.Type.record_name)
+       List.fold_left record.Term.record_tparams
+         ~init:(Type.Nominal record.Term.record_name)
          ~f:(fun ty rigid_var ->
            let var =
              Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid_var)))
@@ -457,13 +457,14 @@ let rec infer_term checker Term.{ term; ann } =
            Type.App(ty, var)
          )
      in
-     Array.fold_right record.Type.fields ~init:(Ok [])
+     Array.fold_right record.Term.record_fields ~init:(Ok [])
        ~f:(fun (_, field_ty, next) acc ->
          acc >>= fun acc ->
-         let ty = inst_selective inst_map field_ty in
+         let Type.Forall(_, field_ty) = field_ty in
+         let field_ty = inst_selective inst_map field_ty in
          in_new_let_level (fun checker ->
              infer_term checker next >>= fun next ->
-             Message.at ann (unify_types checker next.Typedtree.ty ty)
+             Message.at ann (unify_types checker next.Typedtree.ty field_ty)
              >>| fun () -> next :: acc
            ) checker
        ) >>| fun members ->

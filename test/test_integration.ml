@@ -345,6 +345,16 @@ let tests =
          | V1 -> puts "Good\n"
          | V2 -> puts "Bad\n"
          | V3 -> puts "Bad\n"
+     |}
+  ; {|type Functor f = {
+        map : forall a b. (a -> b) -> f a -> f b;
+      }
+
+      type Monad m = {
+        functor : forall. Functor m;
+        join : forall a. m (m a) -> m a;
+        return : forall a. a -> m a;
+      }
      |} ]
 
 let std_prelude_prefix =

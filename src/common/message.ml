@@ -17,6 +17,7 @@ type error =
   | Occurs of Type.wobbly_var * Type.t
   | Parser_error
   | Redefined_constr of string
+  | Redefined_field of string
   | Redefined_name of string
   | Redefined_typevar of string
   | Reexported_name of string

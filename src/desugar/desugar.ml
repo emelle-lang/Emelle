@@ -9,13 +9,18 @@ type t =
   { vargen : Ident.gen
   ; imports : (string, Package.t) Hashtbl.t
   ; packages : (Qual_id.Prefix.t, Package.t) Hashtbl.t
-  ; package : Package.t }
+  ; package : Package.t
+  ; tvar_env : (string, Type.t, String.comparator_witness) Env.t }
 
 let create package packages =
   { vargen = Ident.create_gen ()
   ; imports = Hashtbl.create (module String)
   ; package
-  ; packages }
+  ; packages
+  ; tvar_env = Env.empty (module String) }
+
+let in_tvar_scope_with f frame t =
+  Env.in_scope_with (fun env -> f { t with tvar_env = env }) frame t.tvar_env
 
 let find f error st = function
   | Ast.Internal name ->
@@ -62,7 +67,7 @@ let rec pattern_of_ast_pattern st map id_opt ast_pat =
      ( { Pattern.ann = ast_pat.Ast.pat_ann
        ; node = Deref pat
        ; id = id_opt }
-     , map)
+     , map )
   | Ast.Unit ->
      Ok ( { Pattern.ann = ast_pat.Ast.pat_ann
           ; node = Unit
@@ -87,16 +92,16 @@ let rec pattern_of_ast_pattern st map id_opt ast_pat =
      Ok ({ Pattern.ann = ast_pat.Ast.pat_ann; node = Wild; id = id_opt }, map)
 
 (** Convert an Ast.monotype into an Type.t *)
-let rec normalize t tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
+let rec normalize t { Ast.ty_node = node; Ast.ty_ann = ann } =
   let open Result.Monad_infix in
   match node with
   | Ast.TApp(constr, arg) ->
-     normalize t tvars constr >>= fun constr ->
-     normalize t tvars arg >>| fun arg ->
+     normalize t constr >>= fun constr ->
+     normalize t arg >>| fun arg ->
      Type.App(constr, arg)
   | Ast.TApplied_arrow(dom, codom) ->
-     normalize t tvars dom >>= fun dom ->
-     normalize t tvars codom >>| fun codom ->
+     normalize t dom >>= fun dom ->
+     normalize t codom >>| fun codom ->
      Type.arrow dom codom
   | Ast.TArrow -> Ok (Type.Prim Type.Arrow)
   | Ast.TRef -> Ok (Type.Prim Type.Ref)
@@ -111,7 +116,7 @@ let rec normalize t tvars { Ast.ty_node = node; Ast.ty_ann = ann } =
        | Error e -> Message.error ann e
      end
   | Ast.TVar name ->
-     match Env.find tvars name with
+     match Env.find t.tvar_env name with
      | Some tvar -> Ok tvar
      | None -> Message.error ann (Message.Unresolved_typevar name)
 
@@ -120,8 +125,9 @@ let fresh_kinds_of_typeparams checker =
       (Kind.Var (Kind.fresh_var checker.Typecheck.kvargen), name, purity)
     )
 
-let tvars_of_typeparams checker tvar_map decls =
+let tvars_of_typeparams checker decls =
   let open Result.Let_syntax in
+  let tvar_map = Map.empty (module String) in
   let rec loop tvar_map tvar_list = function
     | (kind, str, purity) :: decls ->
        let tvar =
@@ -131,9 +137,11 @@ let tvars_of_typeparams checker tvar_map decls =
          | Ast.Impure i ->
             Type.fresh_rigid checker.Typecheck.tvargen Type.Impure i kind
        in
-       begin match Env.add tvar_map str (Type.Var (ref (Type.Rigid tvar))) with
-       | None -> Error (Message.Redefined_typevar str)
-       | Some tvar_map ->
+       begin match
+         Map.add tvar_map ~key:str ~data:(Type.Var (ref (Type.Rigid tvar)))
+       with
+       | `Duplicate -> Error (Message.Redefined_typevar str)
+       | `Ok tvar_map ->
           (* Fold RIGHT, not left! *)
           let%map tvar_map, tvar_list = loop tvar_map tvar_list decls in
           tvar_map, tvar :: tvar_list
@@ -147,11 +155,12 @@ let type_of_ast_polytype
       ; polyty_body = body
       ; polyty_ann = ann } =
   let open Result.Monad_infix in
-  let tvar_map = Env.empty (module String) in
   let typeparams = fresh_kinds_of_typeparams checker typeparams in
-  Message.at ann (tvars_of_typeparams checker tvar_map typeparams)
+  Message.at ann (tvars_of_typeparams checker typeparams)
   >>= fun (tvar_map, tvar_list) ->
-  normalize t tvar_map body >>| fun body ->
+  in_tvar_scope_with (fun t ->
+      normalize t body
+    ) tvar_map t >>| fun body ->
   Type.Forall(tvar_list, body)
 
 let find_var t env ann qual_id =
@@ -202,9 +211,8 @@ let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
                  ) map env
              in
              let ids =
-               Map.fold ~f:(fun ~key:_ ~data:id set ->
-                   Set.add set id
-                 ) ~init:(Set.empty (module Ident)) map
+               Map.fold ~f:(fun ~key:_ ~data:id set -> Set.add set id)
+                 ~init:(Set.empty (module Ident)) map
              in
              ([pat], ids, body) :: cases
            ) ~init:(Ok []) cases
@@ -233,29 +241,26 @@ let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
          let map = Map.empty (module String) in
          pattern_of_ast_pattern t map None pat >>= fun (pat, map) ->
          let%bind pats, map =
-           List.fold_right ~f:(fun pat acc ->
+           List.fold_right pats ~init:(Ok ([], map)) ~f:(fun pat acc ->
                let%bind list, map = acc in
                let%map pat, map = pattern_of_ast_pattern t map None pat in
                (pat :: list, map)
-             ) ~init:(Ok ([], map)) pats
+             )
          in
          let%map term =
-           Env.in_scope_with (fun env ->
-               term_of_expr t checker env expr
-             ) map env
+           Env.in_scope_with (fun env -> term_of_expr t checker env expr)
+             map env
          in
          let ids =
-           Map.fold ~f:(fun ~key:_ ~data:id acc ->
-               Set.add acc id
-             ) ~init:(Set.empty (module Ident)) map
+           Map.fold ~f:(fun ~key:_ ~data:id acc -> Set.add acc id)
+             ~init:(Set.empty (module Ident)) map
          in (pat :: pats, ids, term)
        in
        let%map cases =
-         List.fold_right ~f:(fun branch acc ->
+         List.fold_right (case :: cases) ~init:(Ok []) ~f:(fun branch acc ->
              let%bind rows = acc in
              let%map row = handle_branch branch in
-             row :: rows
-           ) ~init:(Ok []) (case :: cases)
+             row :: rows)
        in
        let case_term =
          { Term.ann
@@ -399,51 +404,89 @@ let set_levels_of_tvars product =
 
 (** Convert an [Ast.adt] into a [Type.adt] *)
 let type_adt_of_ast_adt t checker adt =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   let tparams = List.map ~f:(fun x -> x, Ast.Pure) adt.Ast.adt_params in
   let tparams = fresh_kinds_of_typeparams checker tparams in
   let kinds = List.map ~f:(fun (k, _, _) -> k) tparams in
   let kind = Kind.curry kinds Kind.Mono in
   let constr_map = Hashtbl.create (module String) in
-  List.fold_right
-    adt.Ast.adt_datacons
-    ~init:(Ok ([], List.length adt.Ast.adt_datacons - 1))
-    ~f:(fun { Ast.datacon_name = name
-            ; datacon_product = product
-            ; datacon_ann = ann } acc ->
-      acc >>= fun (constr_list, idx) ->
-      match Hashtbl.add constr_map ~key:name ~data:idx with
-      | `Duplicate -> Message.error ann (Message.Redefined_constr name)
-      | `Ok ->
-         (let tvar_map = Env.empty (module String) in
-          Message.at ann (tvars_of_typeparams checker tvar_map tparams)
-          >>= fun (tvar_map, tvar_list) ->
-          List.fold_right ~f:(fun ty acc ->
-              acc >>= fun products ->
-              normalize t tvar_map ty >>= fun ty ->
-              Message.at ann (Typecheck.kind_of_type checker ty) >>= fun kind ->
-              Message.at ann (Typecheck.unify_kinds kind Kind.Mono)
-              >>| fun () ->
-              ty :: products
-            ) ~init:(Ok []) product
-          >>| fun product ->
-          let out_ty =
-            Type.with_params
-              (Type.Nominal
-                 { Qual_id.prefix = checker.package.Package.prefix
-                 ; name = adt.Ast.adt_name })
-              (List.map ~f:(fun var ->
-                   Type.Var (ref (Type.Rigid var))
-                 ) tvar_list)
-          in
-          set_levels_of_tvars product;
-          ((name, tvar_list, product, out_ty) :: constr_list, idx - 1))
-    ) >>| fun (datacons, _) ->
+  let%map datacons, _ =
+    List.fold_right adt.Ast.adt_datacons
+      ~init:(Ok ([], List.length adt.Ast.adt_datacons - 1))
+      ~f:(fun { Ast.datacon_name = name
+              ; datacon_product = product
+              ; datacon_ann = ann } acc ->
+        let%bind (constr_list, idx) = acc in
+        match Hashtbl.add constr_map ~key:name ~data:idx with
+        | `Duplicate -> Message.error ann (Message.Redefined_constr name)
+        | `Ok ->
+           let%bind (tvar_map, tvar_list) =
+             Message.at ann (tvars_of_typeparams checker tparams)
+           in
+           let%map product =
+             List.fold_right product ~init:(Ok []) ~f:(fun ty acc ->
+                 let%bind products = acc in
+                 let%bind ty =
+                   in_tvar_scope_with (fun t -> normalize t ty) tvar_map t
+                 in
+                 let%bind kind =
+                   Message.at ann (Typecheck.kind_of_type checker ty)
+                 in
+                 let%map () =
+                   Message.at ann (Typecheck.unify_kinds kind Kind.Mono)
+                 in
+                 ty :: products
+               )
+           in
+           let out_ty =
+             Type.with_params
+               (Type.Nominal
+                  { Qual_id.prefix = checker.package.Package.prefix
+                  ; name = adt.Ast.adt_name })
+               (List.map ~f:(fun var ->
+                    Type.Var (ref (Type.Rigid var))
+                  ) tvar_list)
+           in
+           set_levels_of_tvars product;
+           ((name, tvar_list, product, out_ty) :: constr_list, idx - 1)
+      )
+  in
   let datacons = Array.of_list datacons in
   { Type.name = adt.Ast.adt_name
   ; adt_kind = kind
   ; datacon_names = constr_map
   ; datacons }
+
+let type_record_of_ast_record t checker record =
+  let open Result.Let_syntax in
+  let tparams = List.map ~f:(fun x -> x, Ast.Pure) record.Ast.record_params in
+  let tparams = fresh_kinds_of_typeparams checker tparams in
+  let kinds = List.map ~f:(fun (k, _, _) -> k) tparams in
+  let kind = Kind.curry kinds Kind.Mono in
+  let%bind (tvar_map, tvar_list) =
+    Message.at record.Ast.record_ann (tvars_of_typeparams checker tparams)
+  in
+  let field_map = Hashtbl.create (module String) in
+  let%map record_fields, _ =
+    in_tvar_scope_with (fun t ->
+        List.fold_right record.Ast.record_fields
+          ~init:(Ok ([], List.length record.Ast.record_fields - 1))
+          ~f:(fun { field_ann = ann
+                  ; field_name = name
+                  ; field_polytype = polytype } acc ->
+            let%bind list, i = acc in
+            let%bind polytype = type_of_ast_polytype t checker polytype in
+            match Hashtbl.add field_map ~key:name ~data:i with
+            | `Ok -> Ok ((name, polytype, ()) :: list, i - 1)
+            | `Duplicate -> Message.error ann (Message.Redefined_field name)
+          )
+      ) tvar_map t
+  in
+  { Type.record_name = record.Ast.record_name
+  ; record_kind = kind
+  ; record_tparams = tvar_list
+  ; field_names = field_map
+  ; fields = Array.of_list record_fields }
 
 let desugar typechecker env package packages ast_file =
   let open Result.Let_syntax in
@@ -469,51 +512,85 @@ let desugar typechecker env package packages ast_file =
                ) in
            ( env
            , { Term.item_ann = next.Ast.item_ann
-             ; item_node = Term.Top_let(scruts, ids, pats) }::list )
+             ; item_node = Term.Top_let(scruts, ids, pats) } :: list )
         | Ast.Let_rec bindings ->
            let%map env, bindings =
              desugar_rec_bindings t typechecker env bindings in
            ( env
            , { Term.item_ann = next.Ast.item_ann
-             ; item_node = Term.Top_let_rec bindings }::list )
-        | Ast.Type(adt, adts) ->
+             ; item_node = Term.Top_let_rec bindings } :: list )
+        | Ast.Type(typedecl, typedecls) ->
+           (* This code is getting ugly, but I need to think of a better way to
+              handle recursive type definitions. *)
            let%bind () =
-             List.fold ~f:(fun acc adt ->
+             List.fold_right (typedecl :: typedecls) ~init:(Ok ())
+               ~f:(fun typedecl acc ->
                  let%bind () = acc in
+                 let name, ann = match typedecl with
+                   | Ast.Adt adt -> adt.Ast.adt_name, adt.adt_ann
+                   | Ast.Record record ->
+                      record.Ast.record_name, record.record_ann
+                 in
                  let kvar = Kind.fresh_var typechecker.Typecheck.kvargen in
-                 Message.at adt.Ast.adt_ann
+                 Message.at ann
                    (Package.add_typedef
-                      package adt.Ast.adt_name (Package.Todo (Kind.Var kvar)))
-               ) ~init:(Ok ()) (adt :: adts)
+                      package name (Package.Todo (Kind.Var kvar)))
+               )
            in
-           List.fold ~f:(fun acc adt ->
+           List.fold ~f:(fun acc typedecl ->
                let%bind () = acc in
-               let%bind adt' = type_adt_of_ast_adt t typechecker adt in
-               match Package.find_typedef package adt'.Type.name with
-               | None ->
-                  Message.error next.Ast.item_ann
-                    (Message.Unreachable_error "Typecheck ADT")
-               | Some ptr ->
-                  match !ptr with
-                  | Package.Compiled _ ->
+               match typedecl with
+               | Ast.Adt adt ->
+                  let ann = adt.Ast.adt_ann in
+                  let%bind adt = type_adt_of_ast_adt t typechecker adt in
+                  begin match Package.find_typedef package adt.Type.name with
+                  | None ->
                      Message.error next.Ast.item_ann
-                       (Message.Redefined_name adt'.Type.name)
-                  | Package.Todo kind ->
-                     let%bind () =
-                       Message.at adt.Ast.adt_ann
-                         (Typecheck.unify_kinds kind (Type.kind_of_adt adt')) in
-                     let%map () =
-                       Message.at adt.Ast.adt_ann
-                         (Package.add_datacons package adt')
-                     in
-                     ptr := Package.Compiled (Type.Manifest adt')
-                  | Package.Prim _ ->
-                     let%map () =
-                       Message.at adt.Ast.adt_ann
-                         (Package.add_datacons package adt')
-                     in
-                     ptr := Package.Compiled (Type.Manifest adt')
-             ) ~init:(Ok ()) (adt::adts) >>| fun () -> (env, list)
+                       (Message.Unreachable_error "Typecheck ADT")
+                  | Some ptr ->
+                     match !ptr with
+                     | Package.Compiled _ ->
+                        Message.error next.Ast.item_ann
+                          (Message.Redefined_name adt.Type.name)
+                     | Package.Todo kind ->
+                        let%bind () =
+                          Message.at ann
+                            (Typecheck.unify_kinds kind adt.Type.adt_kind)
+                        in
+                        let%map () =
+                          Message.at ann (Package.add_datacons package adt)
+                        in
+                        ptr := Package.Compiled (Type.Adt adt)
+                     | Package.Prim _ ->
+                        let%map () =
+                          Message.at ann (Package.add_datacons package adt)
+                        in
+                        ptr := Package.Compiled (Type.Adt adt)
+                  end
+               | Ast.Record record ->
+                  let ann = record.Ast.record_ann in
+                  let%bind record =
+                    type_record_of_ast_record t typechecker record
+                  in
+                  let name = record.Type.record_name in
+                  match Package.find_typedef package name with
+                  | None ->
+                     Message.error next.Ast.item_ann
+                       (Message.Unreachable_error "Typecheck record")
+                  | Some ptr ->
+                     match !ptr with
+                     | Package.Compiled _ ->
+                        Message.error next.Ast.item_ann
+                          (Message.Redefined_name name)
+                     | Package.Todo kind ->
+                        let%map () =
+                          Message.at ann
+                            (Typecheck.unify_kinds kind record.Type.record_kind)
+                        in
+                        ptr := Package.Compiled (Type.Record record)
+                     | Package.Prim _ ->
+                        Ok (ptr := Package.Compiled (Type.Record record))
+             ) ~init:(Ok ()) (typedecl :: typedecls) >>| fun () -> (env, list)
       )
   in
   { Term.top_ann = ast_file.Ast.file_ann

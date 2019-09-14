@@ -19,7 +19,7 @@ type ('ann, 'fix) term =
   | Let_rec of ('ann, 'fix) bind_group * 'fix
   | Lit of Literal.t
   | Prim of string * Type.polytype
-  | Record of 'fix Type.record
+  | Record of ('ann, 'fix) record
   | Ref
   | Seq of 'fix * 'fix
   | Typed_hole of env
@@ -29,6 +29,13 @@ and ('a, 'fix) rec_binding = {
     rec_ann : 'a;
     rec_lhs : Ident.t;
     rec_rhs : 'fix;
+  }
+
+and ('a, 'fix) record = {
+    record_name : Qual_id.t;
+    record_kind : Kind.t;
+    record_tparams : Type.rigid_var list;
+    record_fields : (string * Type.polytype * 'fix) array;
   }
 
 and ('a, 'fix) bind_group = ('a, 'fix) rec_binding list

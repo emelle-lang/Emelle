@@ -40,6 +40,8 @@ let decimal = integer ('.' digit+)
 rule expr = parse
   | whitespace { expr lexbuf }
   | '\n' { Lexing.new_line lexbuf; expr lexbuf }
+  | '{' { LBRACE }
+  | '}' { RBRACE }
   | '(' { LPARENS }
   | ')' { RPARENS }
   | "->" { ARROW }

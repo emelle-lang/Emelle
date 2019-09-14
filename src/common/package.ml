@@ -49,8 +49,9 @@ let kind_of_ident self name =
   | None -> None
   | Some ptr ->
      match !ptr with
-     | Compiled (Type.Manifest adt) -> Some (Type.kind_of_adt adt)
+     | Compiled (Type.Adt adt) -> Some adt.Type.adt_kind
      | Compiled (Type.Abstract kind) -> Some kind
+     | Compiled (Type.Record record) -> Some record.Type.record_kind
      | Todo kind -> Some kind
      | Prim prim -> Some (Type.kind_of_prim prim)
 

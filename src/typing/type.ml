@@ -54,7 +54,7 @@ and wobbly_var = {
     mutable wobbly_let_level : int;
   }
 
-type polytype = Forall of (rigid_var list * t) [@@unboxed]
+type polytype = Forall of rigid_var list * t
 
 (** Type [vargen] is the generator of fresh type variables. *)
 type vargen = int ref
@@ -67,15 +67,17 @@ type adt = {
   }
 
 type 'a record = {
-    record_name : Qual_id.t;
+    record_name : string;
+    record_kind : Kind.t;
     record_tparams : rigid_var list;
     field_names : (string, int) Hashtbl.t;
-    fields : (string * t * 'a) array;
+    fields : (string * polytype * 'a) array;
   }
 
 type decl =
   | Abstract of Kind.t
-  | Manifest of adt
+  | Adt of adt
+  | Record of unit record
 
 let equal_prim x y = (compare_prim x y) = 0
 
@@ -121,8 +123,6 @@ let rec curry input_tys output_ty =
 let type_of_constr adt constr =
   let _, tvars, product, output_ty = adt.datacons.(constr) in
   Forall(tvars, curry product output_ty)
-
-let kind_of_adt adt = adt.adt_kind
 
 let kind_of_prim = function
   | Arrow -> Kind.Poly(Kind.Mono, Kind.Poly(Kind.Mono, Kind.Mono))

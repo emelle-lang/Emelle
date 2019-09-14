@@ -248,7 +248,8 @@ let rec compile_items hole =
           match defs with
           | [] -> Error (Bexp.Hole hole, "No types")
           | def :: defs ->
-             Ok (Ast.Type(def, defs), next)
+             Ok ( Ast.Type(Ast.Adt def, List.map ~f:(fun t -> Ast.Adt t) defs)
+                , next )
      in
      let%map next = compile_items next in
      { Ast.item_ann = Bexp.Hole hole; item_node = node } :: next

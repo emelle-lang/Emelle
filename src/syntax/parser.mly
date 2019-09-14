@@ -16,6 +16,8 @@
 %token TYPE
 %token WITH
 
+%token LBRACE
+%token RBRACE
 %token LPARENS
 %token RPARENS
 %token ARROW
@@ -98,9 +100,13 @@ let item :=
   | LET; REC; bindings = separated_nonempty_list(AND, rec_binding);
       { { Ast.item_ann = ($symbolstartpos, $endpos)
         ; item_node = Ast.Let_rec bindings } }
-  | TYPE; ~ = adt; adts = list(AND; adt);
+  | TYPE; ~ = typedecl; typedecls = list(AND; typedecl);
       { { Ast.item_ann = ($symbolstartpos, $endpos)
-        ; item_node = Ast.Type(adt, adts) } }
+        ; item_node = Ast.Type(typedecl, typedecls) } }
+
+let typedecl :=
+  | ~ = adt; { Ast.Adt adt }
+  | ~ = record; { Ast.Record record }
 
 let adt :=
   | name = UIDENT; params = list(LIDENT); EQUALS; option(BAR);
@@ -115,6 +121,20 @@ let constr :=
       { { Ast.datacon_ann = ($symbolstartpos, $endpos)
         ; datacon_name = name
         ; datacon_product = tys } }
+
+let record :=
+  | name = UIDENT; params = list(LIDENT); EQUALS; LBRACE;
+    fields = list(field); RBRACE;
+      { { Ast.record_ann = ($symbolstartpos, $endpos)
+        ; record_name = name
+        ; record_params = params
+        ; record_fields = fields } }
+
+let field :=
+  | name = LIDENT; COLON; ~ = polytype; SEMICOLON;
+      { { Ast.field_ann = ($symbolstartpos, $endpos)
+        ; field_name = name
+        ; field_polytype = polytype } }
 
 let tvar_decl :=
   | id = LIDENT; opt = option(BANG; i = INT_LIT; { i });
