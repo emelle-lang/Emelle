@@ -520,52 +520,45 @@ let desugar typechecker env package packages ast_file =
            , { Term.item_ann = next.Ast.item_ann
              ; item_node = Term.Top_let_rec bindings } :: list )
         | Ast.Type(typedecl, typedecls) ->
-           (* This code is getting ugly, but I need to think of a better way to
-              handle recursive type definitions. *)
-           let%bind () =
-             List.fold_right (typedecl :: typedecls) ~init:(Ok ())
+           let%bind typedecls =
+             List.fold_right (typedecl :: typedecls) ~init:(Ok [])
                ~f:(fun typedecl acc ->
-                 let%bind () = acc in
+                 let%bind acc = acc in
                  let name, ann = match typedecl with
                    | Ast.Adt adt -> adt.Ast.adt_name, adt.adt_ann
                    | Ast.Record record ->
                       record.Ast.record_name, record.record_ann
                  in
                  let kvar = Kind.fresh_var typechecker.Typecheck.kvargen in
-                 Message.at ann
-                   (Package.add_typedef
-                      package name (Package.Todo (Kind.Var kvar)))
+                 let def = ref (Package.Todo (Kind.Var kvar)) in
+                 let%map () =
+                   Message.at ann (Package.add_typedef package name def)
+                 in ((typedecl, def) :: acc)
                )
            in
-           List.fold ~f:(fun acc typedecl ->
+           List.fold ~f:(fun acc (typedecl, def) ->
                let%bind () = acc in
                match typedecl with
                | Ast.Adt adt ->
                   let ann = adt.Ast.adt_ann in
                   let%bind adt = type_adt_of_ast_adt t typechecker adt in
-                  begin match Package.find_typedef package adt.Type.name with
-                  | None ->
-                     Message.error next.Ast.item_ann
-                       (Message.Unreachable_error "Typecheck ADT")
-                  | Some ptr ->
-                     match !ptr with
-                     | Package.Compiled _ ->
-                        Message.error next.Ast.item_ann
-                          (Message.Redefined_name adt.Type.name)
-                     | Package.Todo kind ->
-                        let%bind () =
-                          Message.at ann
-                            (Typecheck.unify_kinds kind adt.Type.adt_kind)
-                        in
-                        let%map () =
-                          Message.at ann (Package.add_datacons package adt)
-                        in
-                        ptr := Package.Compiled (Type.Adt adt)
-                     | Package.Prim _ ->
-                        let%map () =
-                          Message.at ann (Package.add_datacons package adt)
-                        in
-                        ptr := Package.Compiled (Type.Adt adt)
+                  begin match !def with
+                  | Package.Compiled _ ->
+                     Message.error ann (Message.Redefined_name adt.Type.name)
+                  | Package.Todo kind ->
+                     let%bind () =
+                       Message.at ann
+                         (Typecheck.unify_kinds kind adt.Type.adt_kind)
+                     in
+                     let%map () =
+                       Message.at ann (Package.add_datacons package adt)
+                     in
+                     def := Package.Compiled (Type.Adt adt)
+                  | Package.Prim _ ->
+                     let%map () =
+                       Message.at ann (Package.add_datacons package adt)
+                     in
+                     def := Package.Compiled (Type.Adt adt)
                   end
                | Ast.Record record ->
                   let ann = record.Ast.record_ann in
@@ -573,24 +566,18 @@ let desugar typechecker env package packages ast_file =
                     type_record_of_ast_record t typechecker record
                   in
                   let name = record.Type.record_name in
-                  match Package.find_typedef package name with
-                  | None ->
-                     Message.error next.Ast.item_ann
-                       (Message.Unreachable_error "Typecheck record")
-                  | Some ptr ->
-                     match !ptr with
-                     | Package.Compiled _ ->
-                        Message.error next.Ast.item_ann
-                          (Message.Redefined_name name)
-                     | Package.Todo kind ->
-                        let%map () =
-                          Message.at ann
-                            (Typecheck.unify_kinds kind record.Type.record_kind)
-                        in
-                        ptr := Package.Compiled (Type.Record record)
-                     | Package.Prim _ ->
-                        Ok (ptr := Package.Compiled (Type.Record record))
-             ) ~init:(Ok ()) (typedecl :: typedecls) >>| fun () -> (env, list)
+                  match !def with
+                  | Package.Compiled _ ->
+                     Message.error ann (Message.Redefined_name name)
+                  | Package.Todo kind ->
+                     let%map () =
+                       Message.at ann
+                         (Typecheck.unify_kinds kind record.Type.record_kind)
+                     in
+                     def := Package.Compiled (Type.Record record)
+                  | Package.Prim _ ->
+                     Ok (def := Package.Compiled (Type.Record record))
+             ) ~init:(Ok ()) typedecls >>| fun () -> (env, list)
       )
   in
   { Term.top_ann = ast_file.Ast.file_ann

@@ -56,7 +56,7 @@ let kind_of_ident self name =
      | Prim prim -> Some (Type.kind_of_prim prim)
 
 let add_typedef self name typedef =
-  match Hashtbl.add self.typedefs ~key:name ~data:(ref typedef) with
+  match Hashtbl.add self.typedefs ~key:name ~data:typedef with
   | `Ok -> Ok ()
   | `Duplicate -> Error (Message.Redefined_name name)
 
