@@ -123,15 +123,19 @@ let constr :=
         ; datacon_product = tys } }
 
 let record :=
-  | name = UIDENT; params = list(LIDENT); EQUALS; LBRACE;
-    fields = list(field); RBRACE;
+  | name = UIDENT; params = list(LIDENT); EQUALS; LBRACE; ~ = fields; RBRACE;
       { { Ast.record_ann = ($symbolstartpos, $endpos)
         ; record_name = name
         ; record_params = params
         ; record_fields = fields } }
 
+let fields :=
+  | ~ = field; { [field] }
+  | ~ = field; SEMICOLON; { [field] }
+  | ~ = field; SEMICOLON; ~ = fields; { field :: fields }
+
 let field :=
-  | name = LIDENT; COLON; ~ = polytype; SEMICOLON;
+  | name = LIDENT; COLON; ~ = polytype;
       { { Ast.field_ann = ($symbolstartpos, $endpos)
         ; field_name = name
         ; field_polytype = polytype } }

@@ -347,7 +347,14 @@ let tests =
          | V3 -> puts "Bad\n"
      |}
   ; {|type Functor f = {
-        map : forall a b. (a -> b) -> f a -> f b;
+        map : forall a b. (a -> b) -> f a -> f b
+      }
+
+      type Product a b = Pair a * b
+
+      type Applicative f = {
+        e : forall. f Unit;
+        product : forall a b. f a -> f b -> f (Product a b)
       }
 
       type Monad m = {
