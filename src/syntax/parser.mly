@@ -201,7 +201,7 @@ let case :=
   | p = pattern; ARROW; e = expr; { (p, e) }
 
 let lambda_case :=
-  | p = pattern_2; ps = list(pattern_2); ARROW; e = expr; { (p, ps, e) }
+  | p = pattern2; ps = list(pattern2); ARROW; e = expr; { (p, ps, e) }
 
 let binding :=
   | p = pattern; EQUALS; e = expr;
@@ -259,15 +259,15 @@ let expr_atom :=
   | LPARENS; ~ = expr; RPARENS; { expr }
 
 let pattern :=
-  | constr = qual_uid; pats = nonempty_list(pattern_2);
+  | constr = qual_uid; pats = nonempty_list(pattern2);
       { { Ast.pat_ann = ($symbolstartpos, $endpos)
         ; pat_node = Ast.Con(constr, pats) } }
-  | REF; pat = pattern_2;
+  | REF; pat = pattern2;
       { { Ast.pat_ann = ($symbolstartpos, $endpos)
-        ; pat_node = Ast.Deref pat} }
-  | pattern_2
+        ; pat_node = Ast.Deref pat } }
+  | pattern2
 
-let pattern_2 :=
+let pattern2 :=
   | ~ = qual_uid;
       { { Ast.pat_ann = ($symbolstartpos, $endpos)
         ; pat_node = Ast.Con(qual_uid, []) } }

@@ -477,7 +477,7 @@ let type_record_of_ast_record t checker record =
             let%bind list, i = acc in
             let%bind polytype = type_of_ast_polytype t checker polytype in
             match Hashtbl.add field_map ~key:name ~data:i with
-            | `Ok -> Ok ((name, polytype, ()) :: list, i - 1)
+            | `Ok -> Ok ((name, polytype) :: list, i - 1)
             | `Duplicate -> Message.error ann (Message.Redefined_field name)
           )
       ) tvar_map t
@@ -487,6 +487,64 @@ let type_record_of_ast_record t checker record =
   ; record_tparams = tvar_list
   ; field_names = field_map
   ; fields = Array.of_list record_fields }
+
+(** Function that contains the common logic for compiling ADT and record
+    definitions
+
+    [typedef_generic (get_ann, get_name, add_forms, get_kind, mk, mk_typedef)]
+
+    - get_ann: returns the AST annotation
+    - get_name: returns the type's name
+    - add_forms: adds the type's constructors or fields to the package
+    - get_kind: returns the type's kind
+    - mk: create the type
+    - mk_typedef: wrap the type in the correct tag ([Type.Adt] or [Type.Record])
+ *)
+let typedef_generic
+      (get_ann, get_name, add_forms, get_kind, mk, mk_typedef)
+      t typechecker def adt =
+  let open Result.Let_syntax in
+  let ann = get_ann adt in
+  let%bind adt = mk t typechecker adt in
+  begin match !def with
+  | Package.Compiled _ ->
+     Message.error ann (Message.Redefined_name (get_name adt))
+  | Package.Todo kind ->
+     let%bind () =
+       Message.at ann
+         (Typecheck.unify_kinds kind (get_kind adt))
+     in
+     let%map () =
+       Message.at ann (add_forms t.package adt)
+     in
+     def := Package.Compiled (mk_typedef adt)
+  | Package.Prim _ ->
+     let%map () =
+       Message.at ann (add_forms t.package adt)
+     in
+     def := Package.Compiled (mk_typedef adt)
+  end
+
+(* Dummy parameter so that definition is let-generalized *)
+let typedef_adt no_weak_tvars =
+  typedef_generic
+    ( (fun adt -> adt.Ast.adt_ann)
+    , (fun adt -> adt.Type.name)
+    , Package.add_datacons
+    , (fun adt -> adt.Type.adt_kind)
+    , type_adt_of_ast_adt
+    , (fun adt -> Type.Adt adt) )
+    no_weak_tvars
+
+let typedef_record no_weak_tvars =
+  typedef_generic
+    ( (fun reco -> reco.Ast.record_ann)
+    , (fun reco -> reco.Type.record_name)
+    , Package.add_fields
+    , (fun reco -> reco.Type.record_kind)
+    , type_record_of_ast_record
+    , (fun reco -> Type.Record reco) )
+    no_weak_tvars
 
 let desugar typechecker env package packages ast_file =
   let open Result.Let_syntax in
@@ -539,44 +597,8 @@ let desugar typechecker env package packages ast_file =
            List.fold ~f:(fun acc (typedecl, def) ->
                let%bind () = acc in
                match typedecl with
-               | Ast.Adt adt ->
-                  let ann = adt.Ast.adt_ann in
-                  let%bind adt = type_adt_of_ast_adt t typechecker adt in
-                  begin match !def with
-                  | Package.Compiled _ ->
-                     Message.error ann (Message.Redefined_name adt.Type.name)
-                  | Package.Todo kind ->
-                     let%bind () =
-                       Message.at ann
-                         (Typecheck.unify_kinds kind adt.Type.adt_kind)
-                     in
-                     let%map () =
-                       Message.at ann (Package.add_datacons package adt)
-                     in
-                     def := Package.Compiled (Type.Adt adt)
-                  | Package.Prim _ ->
-                     let%map () =
-                       Message.at ann (Package.add_datacons package adt)
-                     in
-                     def := Package.Compiled (Type.Adt adt)
-                  end
-               | Ast.Record record ->
-                  let ann = record.Ast.record_ann in
-                  let%bind record =
-                    type_record_of_ast_record t typechecker record
-                  in
-                  let name = record.Type.record_name in
-                  match !def with
-                  | Package.Compiled _ ->
-                     Message.error ann (Message.Redefined_name name)
-                  | Package.Todo kind ->
-                     let%map () =
-                       Message.at ann
-                         (Typecheck.unify_kinds kind record.Type.record_kind)
-                     in
-                     def := Package.Compiled (Type.Record record)
-                  | Package.Prim _ ->
-                     Ok (def := Package.Compiled (Type.Record record))
+               | Ast.Adt adt -> typedef_adt t typechecker def adt
+               | Ast.Record record -> typedef_record t typechecker def record
              ) ~init:(Ok ()) typedecls >>| fun () -> (env, list)
       )
   in

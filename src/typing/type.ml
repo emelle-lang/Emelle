@@ -66,18 +66,18 @@ type adt = {
     datacons : (string * rigid_var list * t list * t) array
   }
 
-type 'a record = {
+type record = {
     record_name : string;
     record_kind : Kind.t;
     record_tparams : rigid_var list;
     field_names : (string, int) Hashtbl.t;
-    fields : (string * polytype * 'a) array;
+    fields : (string * polytype) array;
   }
 
 type decl =
   | Abstract of Kind.t
   | Adt of adt
-  | Record of unit record
+  | Record of record
 
 let equal_prim x y = (compare_prim x y) = 0
 
