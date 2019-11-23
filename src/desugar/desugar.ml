@@ -1,4 +1,4 @@
-(* Copyright (C) 2018-2019 TheAspiringHacker.
+(* Copyright (C) 2018-2019 Types Logics Cats.
 
    This Source Code Form is subject to the terms of the Mozilla Public
    License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -314,6 +314,45 @@ let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
        type_of_ast_polytype t checker ty >>| fun ty ->
        Term.Prim(op, ty)
 
+    | Ast.Record((name, def), fields) ->
+       begin match Package.find_field t.package name with
+       | None -> Message.error ann (Message.Unresolved_field name)
+       | Some (reco, idx) ->
+          let%bind def = term_of_expr t checker env def in
+          let defs = Array.create ~len:(Array.length reco.Type.fields) None in
+          defs.(idx) <- Some def;
+          let%bind () =
+            List.fold_left fields ~init:(Ok ()) ~f:(fun acc (name', def') ->
+                let%bind () = acc in
+                match Package.find_field t.package name' with
+                | None -> Message.error ann (Message.Unresolved_field name)
+                | Some (reco', idx') ->
+                   let reco_name = reco.Type.record_name in
+                   let reco_name' = reco'.Type.record_name in
+                   if Qual_id.equal reco_name reco_name' then
+                     match defs.(idx') with
+                     | None ->
+                        let%map def' = term_of_expr t checker env def' in
+                        defs.(idx') <- Some def'
+                     | Some _ ->
+                        Message.error ann (Message.Redefined_field_def name')
+                   else
+                     Message.error ann
+                       (Message.Different_records
+                          (name, reco_name, name', reco_name'))
+              ) in
+          let%map _, fields =
+            Array.fold_right reco.Type.fields
+              ~init:(Ok (Array.length reco.Type.fields - 1, []))
+              ~f:(fun (name, ty) acc ->
+                let%bind idx, list = acc in
+                match defs.(idx) with
+                | Some def -> Ok (idx - 1, (name, ty, def) :: list)
+                | None -> Message.error ann (Message.Missing_field name)
+              ) in
+          Term.Record { Term.record = reco; fields }
+       end
+
     | Ast.Ref -> Ok Term.Ref
 
     | Ast.Seq(e1, e2) ->
@@ -469,24 +508,26 @@ let type_record_of_ast_record t checker record =
   let field_map = Hashtbl.create (module String) in
   let%map record_fields, _ =
     in_tvar_scope_with (fun t ->
-        List.fold_right record.Ast.record_fields
-          ~init:(Ok ([], List.length record.Ast.record_fields - 1))
-          ~f:(fun { field_ann = ann
+        List.fold_left record.Ast.record_fields ~init:(Ok ([], 0))
+          ~f:(fun acc
+                  { field_ann = ann
                   ; field_name = name
-                  ; field_polytype = polytype } acc ->
+                  ; field_polytype = polytype } ->
             let%bind list, i = acc in
             let%bind polytype = type_of_ast_polytype t checker polytype in
             match Hashtbl.add field_map ~key:name ~data:i with
-            | `Ok -> Ok ((name, polytype) :: list, i - 1)
+            | `Ok -> Ok ((name, polytype) :: list, i + 1)
             | `Duplicate -> Message.error ann (Message.Redefined_field name)
           )
       ) tvar_map t
   in
-  { Type.record_name = record.Ast.record_name
+  { Type.record_name =
+      { Qual_id.prefix = t.package.Package.prefix
+      ; name = record.Ast.record_name }
   ; record_kind = kind
   ; record_tparams = tvar_list
   ; field_names = field_map
-  ; fields = Array.of_list record_fields }
+  ; fields = Array.of_list (List.rev record_fields) }
 
 (** Function that contains the common logic for compiling ADT and record
     definitions
@@ -502,27 +543,22 @@ let type_record_of_ast_record t checker record =
  *)
 let typedef_generic
       (get_ann, get_name, add_forms, get_kind, mk, mk_typedef)
-      t typechecker def adt =
+      t typechecker def_ref decl =
   let open Result.Let_syntax in
-  let ann = get_ann adt in
-  let%bind adt = mk t typechecker adt in
-  begin match !def with
+  let ann = get_ann decl in
+  let%bind decl = mk t typechecker decl in
+  begin match !def_ref with
   | Package.Compiled _ ->
-     Message.error ann (Message.Redefined_name (get_name adt))
+     Message.error ann (Message.Redefined_name (get_name decl))
   | Package.Todo kind ->
      let%bind () =
-       Message.at ann
-         (Typecheck.unify_kinds kind (get_kind adt))
+       Message.at ann (Typecheck.unify_kinds kind (get_kind decl))
      in
-     let%map () =
-       Message.at ann (add_forms t.package adt)
-     in
-     def := Package.Compiled (mk_typedef adt)
+     let%map () = Message.at ann (add_forms t.package decl) in
+     def_ref := Package.Compiled (mk_typedef decl)
   | Package.Prim _ ->
-     let%map () =
-       Message.at ann (add_forms t.package adt)
-     in
-     def := Package.Compiled (mk_typedef adt)
+     let%map () = Message.at ann (add_forms t.package decl) in
+     def_ref := Package.Compiled (mk_typedef decl)
   end
 
 (* Dummy parameter so that definition is let-generalized *)
@@ -539,7 +575,7 @@ let typedef_adt no_weak_tvars =
 let typedef_record no_weak_tvars =
   typedef_generic
     ( (fun reco -> reco.Ast.record_ann)
-    , (fun reco -> reco.Type.record_name)
+    , (fun reco -> reco.Type.record_name.Qual_id.name)
     , Package.add_fields
     , (fun reco -> reco.Type.record_kind)
     , type_record_of_ast_record

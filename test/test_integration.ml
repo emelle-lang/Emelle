@@ -362,6 +362,48 @@ let tests =
         join : forall a. m (m a) -> m a;
         return : forall a. a -> m a;
       }
+
+      type Identity a = Id a
+
+      let functor = { map = (fun f (Id a) -> Id (f a)) }
+     |}
+  ; {|type Identity a = Id a
+      type List a = Nil | Cons a * (List a)
+
+      type Functor f = {
+        map : forall a b. (a -> b) -> f a -> f b
+      }
+
+      type Pointed f = {
+        functor : forall. Functor f;
+        pure : forall a. a -> f a;
+      }
+
+      let id_map = fun f (Id a) -> Id (f a)
+
+      let id_pure = Id
+
+      let rec list_map = fun
+        | _ Nil -> Nil
+        | f (Cons x xs) -> Cons (f x) (list_map f xs)
+
+      let list_pure = fun x -> Cons x Nil
+
+      let id_functor = { map = id_map }
+
+      let id_functor2 = { map = (fun f (Id a) -> Id (f a)) }
+
+      let _ = list_map (fun x -> x) (Cons Nil Nil)
+      let _ = list_map (fun x -> x) (Cons (Id Nil) Nil)
+
+      let list_functor = {
+        map = list_map
+      }
+
+      let list_pointed = {
+        functor = list_functor;
+        pure = list_pure
+      }
      |} ]
 
 let std_prelude_prefix =
@@ -502,6 +544,31 @@ let tests =
   ; {|type Option a = None | Some a
 
       let () = None
+     |}
+  ; {|type Identity a = Id a
+      type List a = Nil | Cons a * (List a)
+
+      type Functor f = {
+        map : forall a b. (a -> b) -> f a -> f b
+      }
+
+      type Pointed f = {
+        functor : forall. Functor f;
+        pure : forall a. a -> f a;
+      }
+
+      let id_map = fun f (Id a) -> Id (f a)
+
+      let id_pure = Id
+
+      let list_pure = fun x -> Cons x Nil
+
+      let id_functor = { map = id_map }
+
+      let pointed = {
+        functor = id_functor;
+        pure = list_pure
+      }
      |} ]
 
 let () =

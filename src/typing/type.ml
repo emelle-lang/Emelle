@@ -67,7 +67,7 @@ type adt = {
   }
 
 type record = {
-    record_name : string;
+    record_name : Qual_id.t;
     record_kind : Kind.t;
     record_tparams : rigid_var list;
     field_names : (string, int) Hashtbl.t;

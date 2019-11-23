@@ -250,6 +250,10 @@ let expr_atom :=
       { { Ast.expr_ann = ($symbolstartpos, $endpos)
         ; expr_node = Ast.Lit (Literal.String s)} }
   | REF; { { Ast.expr_ann = ($symbolstartpos, $endpos); expr_node =  Ast.Ref } }
+  | LBRACE; ~ = expr_fields; RBRACE;
+      { let field, fields = expr_fields in
+        { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Record(field, fields) } }
   | LPARENS; RPARENS;
       { { Ast.expr_ann = ($symbolstartpos, $endpos)
         ; expr_node =  Ast.Lit Literal.Unit } }
@@ -257,6 +261,15 @@ let expr_atom :=
       { { Ast.expr_ann = ($symbolstartpos, $endpos)
         ; expr_node = Ast.Typed_hole } }
   | LPARENS; ~ = expr; RPARENS; { expr }
+
+let expr_fields :=
+  | field = expr_field; { (field, []) }
+  | field = expr_field; SEMICOLON; { (field, []) }
+  | field = expr_field; SEMICOLON; ~ = expr_fields;
+      { let field1, fields = expr_fields in (field, field1 :: fields) }
+
+let expr_field :=
+  | name = LIDENT; EQUALS; expr = expr_assn; { (name, expr) }
 
 let pattern :=
   | constr = qual_uid; pats = nonempty_list(pattern2);

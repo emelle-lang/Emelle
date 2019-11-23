@@ -32,10 +32,8 @@ and ('a, 'fix) rec_binding = {
   }
 
 and ('a, 'fix) record = {
-    record_name : Qual_id.t;
-    record_kind : Kind.t;
-    record_tparams : Type.rigid_var list;
-    record_fields : (string * Type.polytype * 'fix) array;
+    record : Type.record;
+    fields : (string * Type.polytype * 'fix) list;
   }
 
 and ('a, 'fix) bind_group = ('a, 'fix) rec_binding list

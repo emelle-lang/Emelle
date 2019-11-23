@@ -61,6 +61,7 @@ and 'a expr' =
   | Lit of Literal.t
   | Op of 'a expr * qual_id * 'a expr
   | Prim of string * 'a polytype
+  | Record of (string * 'a expr) * (string * 'a expr) list
   | Ref
   | Seq of 'a expr * 'a expr
   | Typed_hole

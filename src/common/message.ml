@@ -9,10 +9,12 @@ open Base
 type error =
   | Abstract_type of Qual_id.t
   | And_error of error * error
+  | Different_records of string * Qual_id.t * string * Qual_id.t
   | Escaping_rigid of Type.rigid_var
   | Kind_unification_fail of Kind.t * Kind.t
   | Lexer_error of string
   | Mismatched_arity
+  | Missing_field of string
   | Not_enough_fields
   | Occurs of Type.wobbly_var * Type.t
   | Parser_error
@@ -21,6 +23,7 @@ type error =
   | Redefined_name of string
   | Redefined_typevar of string
   | Reexported_name of string
+  | Redefined_field_def of string
   | Too_many_fields
   | Type_unification_fail of Type.t * Type.t
   | Typed_hole of (string, Ident.t, String.comparator_witness) Env.t
@@ -28,6 +31,7 @@ type error =
   | Unimplemented of string
   | Unknown_constr of Qual_id.t * string
   | Unreachable_error of string
+  | Unresolved_field of string
   | Unresolved_id of Qual_id.t
   | Unresolved_name of string
   | Unresolved_path of Ast.qual_id

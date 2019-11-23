@@ -126,11 +126,17 @@ let print_error pp = function
      print_ident pp id
   | Message.Kind_unification_fail _ ->
      Buffer.add_string pp.buffer "Kind unification fail"
+  | Message.Missing_field name ->
+     Buffer.add_string pp.buffer "Missing field ";
+     Buffer.add_string pp.buffer name
   | Message.Occurs(wobbly, ty) ->
      Buffer.add_string pp.buffer "Occurs check: ";
      print_wobbly pp wobbly;
      Buffer.add_string pp.buffer " occurs in ";
      print_type pp (-1) ty
+  | Message.Redefined_field_def name ->
+     Buffer.add_string pp.buffer "Redefined field definition ";
+     Buffer.add_string pp.buffer name
   | Message.Type_unification_fail(t1, t2) ->
      Buffer.add_string pp.buffer "Type unification fail: ";
      print_type pp (-1) t1;
@@ -149,9 +155,15 @@ let print_error pp = function
      Buffer.add_string pp.buffer "_______________________";
      newline pp;
      print_type pp (-1) ty
+  | Message.Unimplemented msg ->
+     Buffer.add_string pp.buffer "Unimplemented ";
+     Buffer.add_string pp.buffer msg
   | Message.Unreachable_error str ->
      Buffer.add_string pp.buffer "Unreachable ";
      Buffer.add_string pp.buffer str
+  | Message.Unresolved_field name ->
+     Buffer.add_string pp.buffer "Unresolved_field ";
+     Buffer.add_string pp.buffer name
   | Message.Unresolved_id id ->
      Buffer.add_string pp.buffer "Unresolved id ";
      print_ident pp id
