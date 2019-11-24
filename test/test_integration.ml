@@ -404,7 +404,32 @@ let tests =
         functor = list_functor;
         pure = list_pure
       }
-     |} ]
+
+      let list =
+        list_functor.map (fun x -> x)
+          (list_functor.map list_pure (Cons Nil Nil))
+     |}
+  (* THIS TEST SHOULD PASS!
+
+     FIXME: FIND AND FIX REGISTER ALLOCATOR BUG
+   *)
+  (*; {|
+      type List a = Nil | Cons a * (List a)
+      type Functor f = {
+        map : forall a b. (a -> b) -> f a -> f b
+      }
+
+      let puts = foreign "puts" forall . String -> Unit
+
+      let rec list_map = fun
+        | _ Nil -> Nil
+        | f (Cons x xs) ->
+           Cons (f x) (list_map f xs)
+
+      let functor = { map = list_map }
+
+      let _ = functor.map puts (Cons "" Nil)
+     |}*) ]
 
 let std_prelude_prefix =
   { Qual_id.Prefix.package = "std"
@@ -420,15 +445,18 @@ let () =
       let packages = Pipeline.create_hashtbl () in
       Pipeline.create_std packages vm;
       match
-        Pipeline.compile_source packages main_prefix (Lexing.from_string test)
+        Pipeline.compile_source_ssa packages main_prefix
+          (Lexing.from_string test)
       with
-      | Ok file ->
+      | Ok (ssa, file) ->
          begin
            try ignore (Eval.eval vm file) with
-           | _ ->
+           | e ->
               let pp = Prettyprint.create () in
+              Prettyprint.Ssa.print_module pp ssa;
               Prettyprint.Asm.print_module pp file;
-              failwith (test ^ "\n" ^ (Prettyprint.to_string pp))
+              Stdio.print_endline (Prettyprint.to_string pp);
+              raise e
          end
       | Error e ->
          let pp = Prettyprint.create () in
@@ -569,6 +597,43 @@ let tests =
         functor = id_functor;
         pure = list_pure
       }
+     |}
+  ; {|type Id1 a = Id1 a
+      type Id2 a = Id2 a
+      type List a = Nil | Cons a * (List a)
+      type Functor f = {
+        map : forall a b. (a -> b) -> f a -> f b
+      }
+
+      let functor1 = {
+        map = (fun f (Id1 a) -> Id1 (f a))
+      }
+
+      let functor2 = {
+        map = (fun f (Id2 a) -> Id2 (f a))
+      }
+
+      let l = Cons functor1.map (Cons functor2.map Nil)
+     |}
+  ; {|type Id a = Id a
+      type List a = Nil | Cons a * (List a)
+      type Functor f = {
+        map : forall a b. (a -> b) -> f a -> f b
+      }
+
+      let id_functor = {
+        map = (fun f (Id a) -> Id (f a))
+      }
+
+      let rec list_map = fun
+        | _ Nil -> Nil
+        | f (Cons x xs) -> Cons (f x) (list_map f xs)
+
+      let list_functor = {
+        map = list_map
+      }
+
+      let l = Cons id_functor (Cons list_functor Nil)
      |} ]
 
 let () =

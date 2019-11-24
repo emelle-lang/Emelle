@@ -199,7 +199,7 @@ and eval_instr t file frame =
   | Asm.Assign(dest, lval, rval) ->
      begin match eval_operand frame lval with
      | `Ref r -> r := eval_operand frame rval
-     | _ -> failwith "Type error"
+     | _ -> failwith "Assign: Type error: Not a ref"
      end;
      frame.data.(dest) <- `Unit;
      bump_ip frame
@@ -221,13 +221,13 @@ and eval_instr t file frame =
   | Asm.Deref(dest, r) ->
      begin match eval_operand frame r with
      | `Ref r -> frame.data.(dest) <- !r
-     | _ -> failwith "Type error"
+     | _ -> failwith "Deref: Type error: Not a ref"
      end;
      bump_ip frame
   | Asm.Get(dest, data, idx) ->
      begin match eval_operand frame data with
      | `Box { data; _ } -> frame.data.(dest) <- data.(idx)
-     | _ -> failwith "Type error"
+     | _ -> failwith "Get: Type error: Not a box"
      end;
      bump_ip frame
   | Asm.Move(dest, data) ->
@@ -244,19 +244,19 @@ and eval_instr t file frame =
      begin match eval_operand frame dest with
      | `Box { data; _ } ->
         data.(idx) <- src;
-     | _ -> failwith "Type error"
+     | _ -> failwith "Set_field: Type error: Not a box"
      end;
      bump_ip frame
   | Asm.Set_tag(dest, tag) ->
      begin match eval_operand frame dest with
      | `Box box -> box.tag <- tag;
-     | _ -> failwith "Type error"
+     | _ -> failwith "Set_tag: Type_error: Type error: Not a box"
      end;
      bump_ip frame
   | Asm.Tag(dest, addr) ->
      begin match eval_operand frame addr with
      | `Box { tag; _ } -> frame.data.(dest) <- `Int tag
-     | _ -> failwith "Type error"
+     | _ -> failwith "Tag: Type error: Not a box"
      end;
      bump_ip frame
   | Asm.Tail_call(f, arg, args) ->

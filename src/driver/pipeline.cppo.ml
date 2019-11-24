@@ -37,6 +37,23 @@ let compile packages name ast_package =
   >>= fun colorings ->
   To_asm.compile colorings package'
 
+let compile_ret_ssa packages name ast_package =
+  let open Result.Monad_infix in
+  let st = create name packages in
+  compile_frontend st (Env.empty (module String)) ast_package
+  >>= Ssa_of_anf.compile_file
+  >>= fun ssa_package ->
+  Liveness.handle_file ssa_package
+  >>= fun package ->
+  Color.handle_file package
+  >>= fun colorings ->
+  To_asm.compile colorings package
+  >>| fun asm_package ->
+  (ssa_package, asm_package)
+
+let compile_source_ssa packages prefix lexbuf =
+  Parser.file Lexer.expr lexbuf |> compile_ret_ssa packages prefix
+
 let create_hashtbl () =
   Hashtbl.create (module Qual_id.Prefix)
 

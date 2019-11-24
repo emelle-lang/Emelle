@@ -208,7 +208,9 @@ let print_lit pp = function
   | Literal.Int i ->
      Buffer.add_string pp.buffer (Int.to_string i)
   | Literal.String str ->
-     Buffer.add_string pp.buffer (String.escaped str)
+     Buffer.add_char pp.buffer '\"';
+     Buffer.add_string pp.buffer (String.escaped str);
+     Buffer.add_char pp.buffer '\"'
   | Literal.Unit ->
      Buffer.add_string pp.buffer "()"
 
@@ -511,7 +513,10 @@ module Asm = struct
               );
             newline pp
           )
-      )
+      );
+    Buffer.add_string pp.buffer "return address: ";
+    print_addr pp proc.Asm.return;
+    newline pp
 
   let print_module pp package =
     Map.iteri package.Asm.procs ~f:(fun ~key:name ~data:proc ->

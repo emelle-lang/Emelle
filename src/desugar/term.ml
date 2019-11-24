@@ -14,6 +14,7 @@ type ('ann, 'fix) term =
   | Case of 'fix list * ('ann, 'fix) branch list
   | Constr of Type.adt * int
   | Extern_var of Qual_id.Prefix.t * int * Type.polytype
+  | Field_access of Type.record * 'fix * int
   | Lam of Ident.t * 'fix
   | Let of Ident.t * 'fix * 'fix
   | Let_rec of ('ann, 'fix) bind_group * 'fix

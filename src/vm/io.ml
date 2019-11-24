@@ -18,7 +18,7 @@ let add_putc t vm =
          | [|`Char c|] ->
             t.putc c;
             `Unit
-         | _ -> failwith "Type error"))
+         | _ -> failwith "putc: Type error"))
 
 let add_puts t vm =
   Eval.add_foreign_fun vm "puts"
@@ -27,7 +27,7 @@ let add_puts t vm =
          | [|`String s|] ->
             t.puts s;
             `Unit
-         | _ -> failwith "Type error"))
+         | _ -> failwith "Puts: Type error"))
 
 let init t vm =
   add_putc t vm;

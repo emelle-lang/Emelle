@@ -240,6 +240,9 @@ let expr_atom :=
   | ~ = qual_uid;
       { { Ast.expr_ann = ($symbolstartpos, $endpos)
         ; expr_node = Ast.Constr qual_uid } }
+  | ~ = expr_atom; DOT; ~ = qual_lid;
+      { { Ast.expr_ann = ($symbolstartpos, $endpos)
+        ; expr_node = Ast.Field_access(expr_atom, qual_lid) } }
   | f = FLOAT_LIT;
       { { Ast.expr_ann = ($symbolstartpos, $endpos)
         ; expr_node = Ast.Lit (Literal.Float f) } }

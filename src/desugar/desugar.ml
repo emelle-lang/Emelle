@@ -25,7 +25,7 @@ let in_tvar_scope_with f frame t =
 let find f error st = function
   | Ast.Internal name ->
      begin match f st.package name with
-     | None -> Error (Message.Unresolved_name name)
+     | None -> Error (error name)
      | Some x -> Ok ({ Qual_id.prefix = st.package.Package.prefix; name }, x)
      end
   | Ast.External(mod_alias, name) ->
@@ -219,19 +219,22 @@ let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
        in Term.Case([scrutinee], cases)
 
     | Ast.Constr path ->
-       begin match path with
-       | Ast.Internal name ->
-          begin match Package.find_adt t.package name with
-          | Some (adt, idx) -> Ok (Term.Constr(adt, idx))
-          | None -> Message.error ann (Message.Unresolved_name name)
-          end
-       | Ast.External _ ->
-          match
-            find Package.find_adt
-              (fun name -> Message.Unresolved_name name) t path
-          with
-          | Ok (_, (adt, idx)) -> Ok (Term.Constr(adt, idx))
-          | Error e -> Message.error ann e
+       begin match
+         find Package.find_adt (fun name -> Message.Unresolved_name name) t path
+       with
+       | Ok (_, (adt, idx)) -> Ok (Term.Constr(adt, idx))
+       | Error e -> Message.error ann e
+       end
+
+    | Ast.Field_access(record_expr, field) ->
+       begin match
+         find Package.find_field
+           (fun name -> Message.Unresolved_field name) t field
+       with
+       | Ok (_, (record_ty, idx)) ->
+          let%map record_expr = term_of_expr t checker env record_expr in
+          Term.Field_access(record_ty, record_expr, idx)
+       | Error e -> Message.error ann e
        end
 
     | Ast.Lam((_, patterns, _) as case, cases) ->

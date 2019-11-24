@@ -13,6 +13,7 @@ type ('ann, 'a) expr =
   | Case of 'a list * 'ann Pattern.matrix * (bindings * 'a) list
   | Constr of int * int
   | Extern_var of Qual_id.Prefix.t * int
+  | Field_access of 'a * int
   | Lam of Ident.t * 'a
   | Let_rec of (Ident.t * 'a) list * 'a
   | Let of Ident.t * 'a * 'a

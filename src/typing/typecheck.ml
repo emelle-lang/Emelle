@@ -327,10 +327,25 @@ let rec infer_pattern checker map ty pat =
        ) >>| fun () ->
      Map.merge_skewed map1 map ~combine:(fun ~key:_ _ v -> v)
 
+let fresh_record_tcon checker record =
+  let inst_map = Hashtbl.create (module Int) in
+  (* The record's type constructor, applied to fresh type variables *)
+  let ty =
+    List.fold_left record.Type.record_tparams
+      ~init:(Type.Nominal record.Type.record_name)
+      ~f:(fun ty rigid_var ->
+        let var =
+          Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid_var)))
+        in
+        Hashtbl.set inst_map ~key:rigid_var.Type.rigid_id ~data:var;
+        Type.App(ty, var)
+      )
+  in (ty, inst_map)
+
 (** [infer_expr typechecker term] infers the type of [term], returning a
     result. *)
 let rec infer_term checker Term.{ term; ann } =
-  let open Result.Monad_infix in
+  let open Result.Let_syntax in
   match term with
   | Term.App(f, x) ->
      begin match infer_term checker f, infer_term checker x with
@@ -399,6 +414,21 @@ let rec infer_term checker Term.{ term; ann } =
         ; ty = inst checker ty
         ; expr = Typedtree.Extern_var(prefix, offset) }
 
+  | Term.Field_access(record, record_term, idx) ->
+     let (record_ty, inst_map) = fresh_record_tcon checker record in
+     let _, Type.Forall(quantified, polytype) = record.Type.fields.(idx) in
+     let field_ty =
+       Type.Forall(quantified, inst_selective inst_map polytype)
+       |> inst checker
+     in
+     let%bind record_term = infer_term checker record_term in
+     let%map () =
+       Message.at ann (unify_types checker record_ty record_term.Typedtree.ty)
+     in
+     { Typedtree.ann
+     ; ty = field_ty
+     ; expr = Typedtree.Field_access(record_term, idx) }
+
   | Term.Lam(id, body) ->
      in_new_lam_level (fun checker ->
          let var = fresh_tvar checker in
@@ -444,19 +474,7 @@ let rec infer_term checker Term.{ term; ann } =
         ; expr = Typedtree.Prim op }
 
   | Term.Record record ->
-     let inst_map = Hashtbl.create (module Int) in
-     (* The record's type constructor, applied to fresh type variables *)
-     let ty =
-       List.fold_left record.Term.record.Type.record_tparams
-         ~init:(Type.Nominal record.Term.record.Type.record_name)
-         ~f:(fun ty rigid_var ->
-           let var =
-             Type.Var (ref (Type.Wobbly (wobbly_of_rigid checker rigid_var)))
-           in
-           Hashtbl.set inst_map ~key:rigid_var.Type.rigid_id ~data:var;
-           Type.App(ty, var)
-         )
-     in
+     let ty, inst_map = fresh_record_tcon checker record.Term.record in
      List.fold_right record.Term.fields ~init:(Ok [])
        ~f:(fun (_, field_ty, next) acc ->
          acc >>= fun acc ->

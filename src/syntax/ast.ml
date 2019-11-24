@@ -55,6 +55,7 @@ and 'a expr' =
   | Assign of 'a expr * 'a expr
   | Case of 'a expr * ('a pattern * 'a expr) list
   | Constr of qual_id
+  | Field_access of 'a expr * qual_id
   | Lam of 'a lambda_case * 'a lambda_case list
   | Let of 'a let_binding list * 'a expr
   | Let_rec of 'a rec_binding list * 'a expr

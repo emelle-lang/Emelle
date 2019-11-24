@@ -207,6 +207,10 @@ and instr_of_typedtree
      operand_of_typedtree self typedtree ~cont:(fun operand ->
          cont (Anf.Load operand)
        )
+  | Typedtree.Field_access(record, idx) ->
+     operand_of_typedtree self record ~cont:(fun record ->
+         cont (Anf.Get(record, idx))
+       )
   | Typedtree.Lam(reg, body) ->
      let self = create (Some self) in
      let%bind proc = proc_of_typedtree self [] ann reg body in
@@ -311,7 +315,7 @@ and operand_of_typedtree self typedtree ~cont =
                  Anf.Let
                    ( var
                    , Anf.Get(Ir.Operand.Register package, offset)
-                   , body)
+                   , body )
            } )
      }
   | Typedtree.Lit lit -> cont (Ir.Operand.Lit lit)
