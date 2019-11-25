@@ -413,7 +413,7 @@ let tests =
 
      FIXME: FIND AND FIX REGISTER ALLOCATOR BUG
    *)
-  (*; {|
+  ; {|
       type List a = Nil | Cons a * (List a)
       type Functor f = {
         map : forall a b. (a -> b) -> f a -> f b
@@ -428,8 +428,8 @@ let tests =
 
       let functor = { map = list_map }
 
-      let _ = functor.map puts (Cons "" Nil)
-     |}*) ]
+      let _ = functor.map puts (Cons "Good0\n" (Cons "Good1\n" Nil))
+     |} ]
 
 let std_prelude_prefix =
   { Qual_id.Prefix.package = "std"
@@ -455,6 +455,7 @@ let () =
               let pp = Prettyprint.create () in
               Prettyprint.Ssa.print_module pp ssa;
               Prettyprint.Asm.print_module pp file;
+              Stdio.print_endline test;
               Stdio.print_endline (Prettyprint.to_string pp);
               raise e
          end

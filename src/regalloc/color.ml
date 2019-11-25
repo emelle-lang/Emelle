@@ -13,6 +13,7 @@ type ctx = {
     mutable free_colors : (int, Int.comparator_witness) Set.t;
       (** The colors that may be reused *)
     live_regs : (Ir.Register.t, int) Hashtbl.t;
+      (** The currently live registers *)
     visited_blocks : (Ir.Label.t, ctx) Hashtbl.t;
   }
 
@@ -47,7 +48,7 @@ let alloc_reg ctx reg =
   Hashtbl.set ctx.coloring ~key:reg ~data:color;
   Hashtbl.set ctx.live_regs ~key:reg ~data:color
 
-let handle_ending_regs ctx regs =
+let recycle_ending_regs ctx regs =
   Set.fold_result regs ~init:() ~f:(fun () reg ->
       match Hashtbl.find_and_remove ctx.live_regs reg with
       | None ->
@@ -58,7 +59,7 @@ let handle_ending_regs ctx regs =
 
 let handle_instr ctx instr =
   let open Result.Let_syntax in
-  let%map () = handle_ending_regs ctx instr.Ssa2.ending_regs in
+  let%map () = recycle_ending_regs ctx instr.Ssa2.ending_regs in
   ignore (Option.map ~f:(fun dest -> alloc_reg ctx dest) instr.Ssa2.dest)
 
 let handle_instrs ctx =
@@ -69,11 +70,11 @@ let rec handle_block ctx proc label =
   match Map.find proc.Ssa2.blocks label with
   | None -> Message.unreachable "Unknown block"
   | Some block ->
-     (* next_color is either the greatest color of all the predecessor blocks
-        or None if not all predecessors have been visited *)
+     (* opt is either a pair consisting of the set of free colors and the
+        greatest color of all the predecessor blocks or None if not all
+        predecessors have been visited *)
      let opt =
-       Set.fold block.Ssa2.preds
-         ~init:(Some (ctx.free_colors, ctx.color_gen))
+       Set.fold block.Ssa2.preds ~init:(Some (ctx.free_colors, ctx.color_gen))
          ~f:(fun acc label ->
            let open Option.Let_syntax in
            let%bind free_colors, next_color = acc in
@@ -96,13 +97,19 @@ let rec handle_block ctx proc label =
                alloc_reg ctx reg_param
              );
            let%bind () = handle_instrs ctx block.Ssa2.instrs in
-           let%bind () = handle_ending_regs ctx block.Ssa2.ending_at_jump in
+           (* This code is suspicious; I haven't triggered a bug but I think it
+              is incorrect. I don't think it's safe to recycle the registers at
+              the end of a basic block at this point because the successor
+              blocks needs to receive them. I think that the parameters of the
+              successor blocks need to be allocated first. *)
+           let%bind () = recycle_ending_regs ctx block.Ssa2.ending_at_jump in
            let succs = Ssa.successors block.Ssa2.jump in
            List.fold_result succs ~init:() ~f:(fun () label ->
                (* Use a physically distinct state *)
                let ctx =
-                 { ctx with live_regs = Hashtbl.create (module Ir.Register) } in
-               handle_block ctx proc label)
+                 { ctx with live_regs = Hashtbl.create (module Ir.Register) }
+               in handle_block ctx proc label
+             )
 
 let handle_proc proc =
   let open Result.Let_syntax in

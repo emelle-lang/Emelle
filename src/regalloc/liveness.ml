@@ -43,10 +43,13 @@ let regs_of_jump jump =
   | Ir.Operand.Register reg -> [reg]
   | _ -> []
 
-let handle_regs live_regs regs =
-  let regs = Set.of_list (module Ir.Register) regs in
-  let new_regs = Set.diff regs live_regs in
-  (Set.union live_regs regs, new_regs)
+(** [handle_regs live_regs operand_regs]
+
+    Given a set of currently live *)
+let handle_regs live_regs operand_regs =
+  let operand_regs = Set.of_list (module Ir.Register) operand_regs in
+  let new_regs = Set.diff operand_regs live_regs in
+  (Set.union live_regs new_regs, new_regs)
 
 let handle_instr live_regs instr =
   let dest_opt, operand_regs = regs_of_opcode instr in

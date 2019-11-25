@@ -21,66 +21,56 @@ let compile_operands coloring =
   List.fold_right ~init:(Ok []) ~f:(fun operand acc ->
       let%bind operands = acc in
       let%map operand = compile_operand coloring operand in
-      operand::operands)
+      operand :: operands)
 
-let find_color coloring dest f =
+let find_color coloring dest =
   match Hashtbl.find coloring.Color.map dest with
   | None -> Message.unreachable "find_color compile_basic_block"
-  | Some color -> f color
+  | Some color -> Ok color
 
 let compile_instr coloring opcode =
   let open Result.Let_syntax in
   match opcode with
   | Ssa.Assign(dest, lval, rval) ->
-     find_color coloring dest (fun dest ->
-         let%bind lval = compile_operand coloring lval in
-         let%map rval = compile_operand coloring rval in
-         Asm.Assign(dest, lval, rval)
-       )
+     let%bind dest = find_color coloring dest in
+     let%bind lval = compile_operand coloring lval in
+     let%map rval = compile_operand coloring rval in
+     Asm.Assign(dest, lval, rval)
   | Ssa.Box(dest, tag, operands) ->
-     find_color coloring dest (fun dest ->
-         let%map operands = compile_operands coloring operands in
-         Asm.Box(dest, tag, operands)
-       )
+     let%bind dest = find_color coloring dest in
+     let%map operands = compile_operands coloring operands in
+     Asm.Box(dest, tag, operands)
   | Ssa.Box_dummy(dest, i) ->
-     find_color coloring dest (fun dest ->
-         Ok (Asm.Box_dummy(dest, i))
-       )
+     let%bind dest = find_color coloring dest in
+     Ok (Asm.Box_dummy(dest, i))
   | Ssa.Call(dest, f, arg, args) ->
-     find_color coloring dest (fun dest ->
-         let%bind f = compile_operand coloring f in
-         let%bind arg = compile_operand coloring arg in
-         let%map args = compile_operands coloring args in
-         Asm.Call(dest, f, arg, args)
-       )
+     let%bind dest = find_color coloring dest in
+     let%bind f = compile_operand coloring f in
+     let%bind arg = compile_operand coloring arg in
+     let%map args = compile_operands coloring args in
+     Asm.Call(dest, f, arg, args)
   | Ssa.Deref(dest, operand) ->
-     find_color coloring dest (fun dest ->
-         let%map operand = compile_operand coloring operand in
-         Asm.Deref(dest, operand)
-       )
+     let%bind dest = find_color coloring dest in
+     let%map operand = compile_operand coloring operand in
+     Asm.Deref(dest, operand)
   | Ssa.Get(dest, operand, idx) ->
-     find_color coloring dest (fun dest ->
-         let%map operand = compile_operand coloring operand in
-         Asm.Get(dest, operand, idx)
-       )
+     let%bind dest = find_color coloring dest in
+     let%map operand = compile_operand coloring operand in
+     Asm.Get(dest, operand, idx)
   | Ssa.Load(dest, operand) ->
-     find_color coloring dest (fun dest ->
-         let%map operand = compile_operand coloring operand in
-         Asm.Move(dest, operand)
-       )
+     let%bind dest = find_color coloring dest in
+     let%map operand = compile_operand coloring operand in
+     Asm.Move(dest, operand)
   | Ssa.Package(dest, str) ->
-     find_color coloring dest (fun dest ->
-         Ok (Asm.Package(dest, str))
-       )
+     let%map dest = find_color coloring dest in
+     Asm.Package(dest, str)
   | Ssa.Prim(dest, str) ->
-     find_color coloring dest (fun dest ->
-         Ok (Asm.Prim(dest, str))
-       )
+     let%map dest = find_color coloring dest in
+     Asm.Prim(dest, str)
   | Ssa.Ref(dest, operand) ->
-     find_color coloring dest (fun dest ->
-         let%map operand = compile_operand coloring operand in
-         Asm.Ref(dest, operand)
-       )
+     let%bind dest = find_color coloring dest in
+     let%map operand = compile_operand coloring operand in
+     Asm.Ref(dest, operand)
   | Ssa.Set_field(dest, idx, op) ->
      let%bind dest = compile_operand coloring dest in
      let%map op = compile_operand coloring op in
@@ -89,10 +79,9 @@ let compile_instr coloring opcode =
      let%map dest = compile_operand coloring dest in
      Asm.Set_tag(dest, tag)
   | Ssa.Tag(dest, operand) ->
-     find_color coloring dest (fun dest ->
-         let%map operand = compile_operand coloring operand in
-         Asm.Tag(dest, operand)
-       )
+     let%bind dest = find_color coloring dest in
+     let%map operand = compile_operand coloring operand in
+     Asm.Tag(dest, operand)
 
 let rec compile_basic_block new_blocks coloring proc label =
   let open Result.Let_syntax in
@@ -104,8 +93,11 @@ let rec compile_basic_block new_blocks coloring proc label =
      | Some block ->
         let instrs = Queue.create () in
         let%bind params =
-          List.fold_result block.Ssa2.params ~init:[] ~f:(fun acc reg_param ->
-              find_color coloring reg_param (fun color -> Ok (color :: acc))
+          List.fold_right block.Ssa2.params ~init:(Ok [])
+            ~f:(fun reg_param acc ->
+              let%bind list = acc in
+              let%map color = find_color coloring reg_param in
+              color :: list
             ) in
         let%bind () =
           List.fold_result block.Ssa2.instrs ~init:() ~f:(fun () instr ->
@@ -127,7 +119,7 @@ let rec compile_basic_block new_blocks coloring proc label =
              Queue.enqueue instrs (Asm.Break label);
              new_blocks
           | Ssa.Fail ->
-             Queue.enqueue instrs (Asm.Fail);
+             Queue.enqueue instrs Asm.Fail;
              Ok new_blocks
           | Ssa.Return ->
              Queue.enqueue instrs Asm.Return;
