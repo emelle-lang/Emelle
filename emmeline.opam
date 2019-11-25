@@ -16,10 +16,10 @@ synopsis: "An ML dialect"
 description: "An ML dialect"
 depends: [
   "cppo" {build & >= "1.6"}
-  "dune" {build & >= "1.10"}
-  "base" {>= "v0.12" & < "v0.13"}
-  "ppx_compare" {>= "v0.12" & < "v0.13"}
-  "ppx_hash" {>= "v0.12" & < "v0.13"}
-  "ppx_let" {>= "v0.12" & < "v0.13"}
-  "menhir" {>= "20181113"}
+  "dune" {>= "2.0"}
+  "base" {>= "v0.13" & < "v0.14"}
+  "ppx_compare" {>= "v0.13" & < "v0.14"}
+  "ppx_hash" {>= "v0.13" & < "v0.14"}
+  "ppx_let" {>= "v0.13" & < "v0.14"}
+  "menhir" {>= "20190924"}
 ]
