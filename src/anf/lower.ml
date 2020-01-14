@@ -234,7 +234,7 @@ and instr_of_typedtree
   | Typedtree.Prim op -> cont (Prim op)
   | Typedtree.Record record ->
      (* Accumulator is a function because of CPS *)
-     List.fold_right ~f:(fun arg f args ->
+     List.fold_left ~f:(fun f arg args ->
          operand_of_typedtree self arg ~cont:(fun arg -> f (arg :: args))
        ) ~init:(fun args ->
          cont (Anf.Box (0, args))

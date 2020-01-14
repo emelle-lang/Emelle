@@ -42,12 +42,12 @@ let fresh_reg ctx =
     moved to the front, or None if the index reads out of bounds. *)
 let swap_column_of_row (idx : int) (row : 'a row) =
   let rec f idx left = function
-    | pivot::right when idx = 0 -> Some (left, pivot, right)
-    | x::next -> f (idx - 1) (x::left) next
+    | pivot :: right when idx = 0 -> Some (left, pivot, right)
+    | x :: next -> f (idx - 1) (x :: left) next
     | [] -> None in
   match f idx [] row.patterns with
   | Some (left, pivot, right) ->
-     Some { row with patterns = pivot::(List.rev_append left right) }
+     Some { row with patterns = pivot :: (List.rev_append left right) }
   | None -> None
 
 (** Column-swapping operation for matrices *)
@@ -55,7 +55,7 @@ let swap_column idx =
   let open Option.Monad_infix in
   List.fold_right ~f:(fun row acc ->
       acc >>= fun rows ->
-      swap_column_of_row idx row >>| fun row -> row::rows
+      swap_column_of_row idx row >>| fun row -> row :: rows
     ) ~init:(Some [])
 
 type find_adt_result =
@@ -66,10 +66,10 @@ type find_adt_result =
 let find_adt pats =
   let rec f i = function
     | [] -> All_wilds
-    | { node = Con(adt, _, _); _ }::_ -> Found_adt(adt, i)
-    | { node = Deref _; _ }::_ -> Found_ref i
-    | { node = Unit | Wild; _ }::xs -> f (i + 1) xs
-    | { node = Or(p1, _); _ }::pats -> f i (p1::pats)
+    | { node = Con(adt, _, _); _ } :: _ -> Found_adt(adt, i)
+    | { node = Deref _; _ } :: _ -> Found_ref i
+    | { node = Unit | Wild; _ } :: xs -> f (i + 1) xs
+    | { node = Or(p1, _); _ } :: pats -> f i (p1 :: pats)
   in f 0 pats
 
 (** Specialize operation as described in Compiling Pattern Matching to Good
@@ -125,7 +125,7 @@ let specialize_ref occurrence rows =
   let helper row rows =
     match row.patterns with
     | [] -> None
-    | { node; id; ann }::rest_pats ->
+    | { node; id; ann } :: rest_pats ->
        let bindings =
          match id with
          | None -> row.bindings
@@ -133,12 +133,12 @@ let specialize_ref occurrence rows =
        match node with
        | Deref pat->
           Some ({ row with
-                  patterns = pat::rest_pats
-                ; bindings }::rows)
+                  patterns = pat :: rest_pats
+                ; bindings } :: rows)
        | Unit | Wild ->
           Some ({ row with
-                  patterns = { ann; node = Wild; id = None }::rest_pats
-                ; bindings }::rows)
+                  patterns = { ann; node = Wild; id = None } :: rest_pats
+                ; bindings } :: rows)
        | _ -> None
   in
   List.fold_right ~f:(fun row acc ->
@@ -155,11 +155,11 @@ let rec default_matrix rows =
        match first_pat.node with
        | Con _ -> Some rows
        | Deref _ -> None
-       | Unit | Wild -> Some ({ row with patterns = rest_pats }::rows)
+       | Unit | Wild -> Some ({ row with patterns = rest_pats } :: rows)
        | Or(p1, p2) ->
-          default_matrix [{ row with patterns = p1::rest_pats }]
+          default_matrix [{ row with patterns = p1 :: rest_pats }]
           >>= fun mat1 ->
-          default_matrix [{ row with patterns = p2::rest_pats }]
+          default_matrix [{ row with patterns = p2 :: rest_pats }]
           >>| fun mat2 ->
           mat1@mat2@rows
   in
@@ -171,9 +171,9 @@ let map_ids_to_occs occurrences row =
   let rec go bindings occurrences list =
     match occurrences, list with
     | [], [] -> Ok bindings
-    | [], _::_ -> Error (Message.Unreachable_error "Too many patterns")
-    | _::_, [] -> Error (Message.Unreachable_error "Too many occurrences")
-    | occ::occs, pat::pats ->
+    | [], _ :: _ -> Error (Message.Unreachable_error "Too many patterns")
+    | _ :: _, [] -> Error (Message.Unreachable_error "Too many occurrences")
+    | occ :: occs, pat :: pats ->
        match pat.id with
        | None -> go bindings occs pats
        | Some id -> go (Map.set bindings ~key:id ~data:occ) occs pats
@@ -184,8 +184,8 @@ let map_ids_to_occs occurrences row =
 (* Maybe make function generic instead of repeating code? TODO consider later *)
 let swap_occurrences idx occurrences =
   let rec f idx left = function
-    | pivot::right when idx = 0 -> Some (left, pivot, right)
-    | x::next -> f (idx - 1) (x::left) next
+    | pivot :: right when idx = 0 -> Some (left, pivot, right)
+    | x :: next -> f (idx - 1) (x :: left) next
     | [] -> None in
   match f idx [] occurrences with
   | Some (left, pivot, right) -> Some (pivot, List.rev_append left right)
@@ -196,7 +196,7 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
   let open Result.Monad_infix in
   function
   | [] -> Ok Anf.Fail (* Case 1 *)
-  | (row::_) as rows ->
+  | (row :: _) as rows ->
      match find_adt row.patterns with
      | All_wilds ->
         (* Case 2 *)
@@ -226,14 +226,14 @@ let rec decision_tree_of_matrix ctx (occurrences : Anf.operand list) =
                         and its children pushed on the stack, pop off the
                         selected occurrence and push occurrences for its
                         subterms *)
-                     let rec push_occs rest idx = function
+                     let rec push_occs rest = function
                        | [] -> [], rest
-                       | _::xs ->
+                       | _ :: xs ->
                           let reg = fresh_reg ctx in
-                          let (new_regs, occs) = push_occs rest (idx + 1) xs in
-                          reg::new_regs, (Ir.Operand.Register reg)::occs in
+                          let (new_regs, occs) = push_occs rest xs in
+                          reg :: new_regs, (Ir.Operand.Register reg) :: occs in
                      let (new_regs, pushed_occs) =
-                       push_occs rest_occs 0 product in
+                       push_occs rest_occs product in
                      match specialize id product first_occ rows with
                      | None -> Error (Message.Unreachable_error "dec tree 1")
                      | Some matrix ->

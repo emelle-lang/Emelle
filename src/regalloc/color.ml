@@ -40,8 +40,8 @@ let fresh_color ctx =
      ctx.free_colors <- Set.remove_index ctx.free_colors 0;
      color
 
-let recycle_color ctx color =
-  ctx.free_colors <- Set.add ctx.free_colors color
+let recycle_color _ctx _color = ()
+  (*ctx.free_colors <- Set.add ctx.free_colors color*)
 
 let alloc_reg ctx reg =
   let color = fresh_color ctx in

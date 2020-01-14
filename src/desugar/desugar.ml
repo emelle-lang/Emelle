@@ -242,7 +242,7 @@ let rec term_of_expr t checker env { Ast.expr_ann = ann; expr_node = node } =
        let ids = List.map ~f:(fun _ -> fresh_ident t None) patterns in
        let handle_branch (pat, pats, expr) =
          let map = Map.empty (module String) in
-         pattern_of_ast_pattern t map None pat >>= fun (pat, map) ->
+         let%bind pat, map = pattern_of_ast_pattern t map None pat in
          let%bind pats, map =
            List.fold_right pats ~init:(Ok ([], map)) ~f:(fun pat acc ->
                let%bind list, map = acc in

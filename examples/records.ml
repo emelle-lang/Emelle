@@ -30,3 +30,13 @@ let opt_applicative = {
     | _ _ -> None
   )
 }
+
+let puts = foreign "puts" forall . String -> Unit
+
+let _ = opt_functor.map puts (Some "Hello world!\n")
+
+let puts2 = fun x y ->
+  puts x;
+  puts y
+
+let _ = map2 opt_applicative puts2 (Some "Hello ") (Some "world!")

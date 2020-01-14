@@ -127,6 +127,9 @@ let to_function file value =
      ; fun_proc_data = closure
      ; fun_params = remaining_params
      ; fun_param_arg_pairs = param_arg_pairs }
+  | `Box _ -> failwith "Type error: Expected function, got non-func box"
+  | `Int _ -> failwith "Type error: Expected function, got Int"
+  | `String _ -> failwith "Type error: Expected function, got String"
   | _ -> failwith "Type error: Expected function"
 
 let rec load_params fun_data param_arg_pairs params args =

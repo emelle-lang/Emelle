@@ -48,7 +48,7 @@ This operation is akin to popping off a scrutinee that failed to match.
 
 ## Binding variables
 
-The patterm match compiler maintains a stack of operands. For the child decision
+The pattern match compiler maintains a stack of operands. For the child decision
 tree from matrix specialization, pop the front of the stack and push operands
 that hold the children of the popped operand. For the child decision tree from
 the default matrix, pop the front of the stack and don't push anything.
