@@ -13,6 +13,7 @@ Emmeline is a work-in-progress
 
 - First-class functions
 - Algebraic data types and pattern matching
+- Hindley-Milner type inference
 - Records with polymorphic fields
 - Typed holes
 
