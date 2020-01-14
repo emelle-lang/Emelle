@@ -3,12 +3,33 @@
 Emmeline is a work-in-progress
 [ML](https://en.wikipedia.org/wiki/ML_(programming_language)) dialect.
 
-**See the block-based editor at
-https://emmeline.gitlab.io/emmeline/editor/index.html.**
+- **See the block-based editor at
+  https://emmeline.gitlab.io/emmeline/editor/index.html.**
+
+- **Use the text-based syntax online at
+  https://emmeline.gitlab.io/emmeline/try/index.html.**
+
+## Features
+
+- First-class functions
+- Algebraic data types and pattern matching
+- Records with polymorphic fields
+- Typed holes
 
 ## Building
 
-First, download OPAM, the OCaml package manager. Then, run:
+To clone the `bexp` Git submodule together with the main repository, run:
+
+    git clone --recurse-submodules https://gitlab.com/emmeline/emmeline
+
+or
+
+    git clone --recurse-submodules https://github.com/emmeline-lang/emmeline
+
+(to either download from GitLab or GitHub).
+
+This project is written in OCaml. Download OPAM, the OCaml package manager, then
+run:
 
     opam install . --deps-only
     opam install ./bexp --deps-only
