@@ -409,10 +409,6 @@ let tests =
         list_functor.map (fun x -> x)
           (list_functor.map list_pure (Cons Nil Nil))
      |}
-  (* THIS TEST SHOULD PASS!
-
-     FIXME: FIND AND FIX REGISTER ALLOCATOR BUG
-   *)
   ; {|
       type List a = Nil | Cons a * (List a)
       type Functor f = {

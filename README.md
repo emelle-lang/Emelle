@@ -22,3 +22,13 @@ First, download OPAM, the OCaml package manager. Then, run:
     dune build editor/stylesheet.css
 
 All of the build output will be in `_build/default`.
+
+## Running the text-based interpreter
+
+To run the interpreter, run `dune exec app/main.exe`. The interpreter will read
+an Emmeline program from standard input. To run the contents of a file, pipe its
+contents into the interpreter:
+
+    cat myfile.ml | dune exec app/main.exe
+
+Example programs are in the `examples/` directory.
