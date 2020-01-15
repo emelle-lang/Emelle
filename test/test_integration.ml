@@ -485,8 +485,8 @@ let () =
       let packages = Pipeline.create_hashtbl () in
       Pipeline.create_std packages vm;
       match
-        Pipeline.compile_source_ssa packages main_prefix
-          (Lexing.from_string test)
+        Lexing.from_string test
+        |> Pipeline.compile_source_ssa packages main_prefix
       with
       | Ok (ssa, file) ->
          begin

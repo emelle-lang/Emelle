@@ -52,7 +52,8 @@ let compile_ret_ssa packages name ast_package =
   (ssa_package, asm_package)
 
 let compile_source_ssa packages prefix lexbuf =
-  Parser.file Lexer.expr lexbuf |> compile_ret_ssa packages prefix
+  let open Result.Monad_infix in
+  Syntax_error.parse_file lexbuf >>= compile_ret_ssa packages prefix
 
 let create_hashtbl () =
   Hashtbl.create (module Qual_id.Prefix)

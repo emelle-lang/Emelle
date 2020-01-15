@@ -118,11 +118,12 @@ let () =
               begin match
                 let program = textarea##.value in
                 let bytestr = Js.to_bytestring program in
-                Parser.file Lexer.expr (Lexing.from_string bytestr)
-                |> Pipeline.compile (Hashtbl.create (module Qual_id.Prefix))
+                Lexing.from_string bytestr
+                |> Pipeline.compile_source_ssa
+                     (Hashtbl.create (module Qual_id.Prefix))
                      main_prefix
               with
-              | Ok asm_module ->
+              | Ok (_, asm_module) ->
                  Caml.print_endline "OK!";
                  set_console_text "";
                  let vm =

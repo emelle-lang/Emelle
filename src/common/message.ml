@@ -24,6 +24,7 @@ type error =
   | Redefined_typevar of string
   | Reexported_name of string
   | Redefined_field_def of string
+  | Syntax_error
   | Too_many_fields
   | Type_unification_fail of Type.t * Type.t
   | Typed_hole of (string, Ident.t, String.comparator_witness) Env.t

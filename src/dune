@@ -3,5 +3,5 @@
 (library
   (name emmeline)
   (public_name emmeline)
-  (libraries base)
+  (libraries base menhirLib)
   (preprocess (pps ppx_compare ppx_hash ppx_let ppx_sexp_conv)))

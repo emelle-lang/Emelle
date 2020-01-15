@@ -137,6 +137,8 @@ let print_error pp = function
   | Message.Redefined_field_def name ->
      Buffer.add_string pp.buffer "Redefined field definition ";
      Buffer.add_string pp.buffer name
+  | Message.Syntax_error ->
+     Buffer.add_string pp.buffer "Syntax error"
   | Message.Type_unification_fail(t1, t2) ->
      Buffer.add_string pp.buffer "Type unification fail: ";
      print_type pp (-1) t1;
@@ -176,15 +178,14 @@ let print_error pp = function
      Buffer.add_string pp.buffer "other"
 
 let print_pos pp pos =
-  Buffer.add_string pp.buffer pos.Lexing.pos_fname;
-  Buffer.add_char pp.buffer ':';
   Buffer.add_string pp.buffer (Int.to_string pos.Lexing.pos_lnum);
-  Buffer.add_char pp.buffer ':';
-  Buffer.add_string pp.buffer (Int.to_string pos.Lexing.pos_bol)
+  Buffer.add_string pp.buffer ":";
+  Buffer.add_string pp.buffer
+    (Int.to_string (pos.Lexing.pos_cnum - pos.Lexing.pos_bol))
 
 let print_span pp (start, fin) =
   print_pos pp start;
-  Buffer.add_char pp.buffer '-';
+  Buffer.add_string pp.buffer " to ";
   print_pos pp fin;
   Buffer.add_string pp.buffer ": "
 
