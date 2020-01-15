@@ -96,7 +96,7 @@ let () =
         let console = Dom_html.getElementById "console" in
         let button = Dom_html.getElementById "run" in
         let set_textarea_text str =
-          textarea##.textContent := Js.some (Js.string str)
+          textarea##.value := Js.string str
         in
         let set_console_text str =
           console##.textContent := Js.some (Js.string str)
