@@ -8,7 +8,72 @@ open Base
 open Js_of_ocaml
 open Emmeline
 
-let main_prefix = { Qual_id.Prefix.package = ""; path = [] }
+let main_prefix = { Qual_id.Prefix.package = "Repl"; path = [] }
+
+let hello_world_program = {|
+let puts = foreign "puts" forall . String -> Unit
+
+let () = puts "Hello, world!\n"
+|}
+
+let list_program = {|
+type List a = Nil | Cons a * (List a)
+
+let rec iter = fun
+  | _ Nil -> ()
+  | f (Cons x xs) ->
+     f x;
+     iter f xs
+
+let puts = foreign "puts" forall . String -> Unit
+
+let () = iter puts (Cons "1\n" (Cons "2\n" (Cons "3\n" Nil)))
+                    |}
+
+let records_program = {|
+type Functor f = {
+  map : forall a b. (a -> b) -> f a -> f b
+}
+
+type Product a b = Pair a * b
+
+type Applicative f = {
+  functor : forall. Functor f;
+  unit : forall. f Unit;
+  product : forall a b. f a -> f b -> f (Product a b)
+}
+
+let map2 = fun appl f a b ->
+  appl.functor.map (fun (Pair a b) -> f a b) (appl.product a b)
+
+type Option a = None | Some a
+
+let opt_functor = {
+  map = (fun
+    | _ None -> None
+    | f (Some x) -> Some (f x)
+  )
+}
+
+let opt_applicative = {
+  functor = opt_functor;
+  unit = Some ();
+  product = (fun
+    | (Some a) (Some b) -> Some (Pair a b)
+    | _ _ -> None
+  )
+}
+
+let puts = foreign "puts" forall . String -> Unit
+
+let _ = opt_functor.map puts (Some "Hello world!\n")
+
+let puts2 = fun x y ->
+  puts x;
+  puts y
+
+let _ = map2 opt_applicative puts2 (Some "Hello ") (Some "world!")
+|}
 
 let () =
   Dom_html.window##.onload :=
@@ -20,8 +85,19 @@ let () =
           | None -> assert false
           | Some textarea -> textarea
         in
+        let menu =
+          match
+            Dom_html.getElementById_coerce "example-select"
+              Dom_html.CoerceTo.select
+          with
+          | None -> assert false
+          | Some menu -> menu
+        in
         let console = Dom_html.getElementById "console" in
         let button = Dom_html.getElementById "run" in
+        let set_textarea_text str =
+          textarea##.textContent := Js.some (Js.string str)
+        in
         let set_console_text str =
           console##.textContent := Js.some (Js.string str)
         in
@@ -48,6 +124,7 @@ let () =
               with
               | Ok asm_module ->
                  Caml.print_endline "OK!";
+                 set_console_text "";
                  let vm =
                    Eval.create (Hashtbl.create (module Qual_id.Prefix))
                  in
@@ -66,6 +143,17 @@ let () =
               end;
               Js._true
             );
+        menu##.onchange :=
+          Dom.handler (fun _ ->
+              begin match menu##.selectedIndex with
+              | 0 -> set_textarea_text hello_world_program
+              | 1 -> set_textarea_text list_program
+              | 2 -> set_textarea_text records_program
+              | _ -> assert false
+              end;
+              Js._true
+            );
+        set_textarea_text hello_world_program;
         Caml.print_endline "loaded";
         Js._true
       )
