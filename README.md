@@ -9,7 +9,7 @@ Emmeline is a work-in-progress
 - **Use the text-based syntax online at
   https://emmeline.gitlab.io/emmeline/try/index.html.**
 
-- **Read technical report: ./TECHNICAL_REPORT.md**
+- **Read technical report: [TECHNICAL_REPORT.md](./TECHNICAL_REPORT.md)**
 
 ## Features
 
