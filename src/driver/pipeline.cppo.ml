@@ -53,13 +53,22 @@ let compile_ret_ssa packages name ast_package =
 
 let compile_source_ssa packages prefix lexbuf =
   let open Result.Monad_infix in
-  Syntax_error.parse_file lexbuf >>= compile_ret_ssa packages prefix
+  try Syntax_error.parse_file lexbuf >>= compile_ret_ssa packages prefix with
+  | Lexer.Unclosed_comment loc ->
+     Error (Message.Lexer_error(loc, Message.Unclosed_comment))
+  | Lexer.Unclosed_string loc ->
+     Error (Message.Lexer_error(loc, Message.Unclosed_string))
 
 let create_hashtbl () =
   Hashtbl.create (module Qual_id.Prefix)
 
 let compile_source packages prefix lexbuf =
-  Parser.file Lexer.expr lexbuf |> compile packages prefix
+  let open Result.Monad_infix in
+  try Syntax_error.parse_file lexbuf >>= compile packages prefix with
+  | Lexer.Unclosed_comment loc ->
+     Error (Message.Lexer_error(loc, Message.Unclosed_comment))
+  | Lexer.Unclosed_string loc ->
+     Error (Message.Lexer_error(loc, Message.Unclosed_string))
 
 let std_path str =
   { Qual_id.Prefix.package = "std"

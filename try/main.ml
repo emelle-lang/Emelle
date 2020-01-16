@@ -11,12 +11,14 @@ open Emmeline
 let main_prefix = { Qual_id.Prefix.package = "Repl"; path = [] }
 
 let hello_world_program = {|
+(* Primitive function *)
 let puts = foreign "puts" forall . String -> Unit
 
 let () = puts "Hello, world!\n"
 |}
 
 let list_program = {|
+(* Emmeline supports recursive ADTs *)
 type List a = Nil | Cons a * (List a)
 
 let rec iter = fun
@@ -28,9 +30,13 @@ let rec iter = fun
 let puts = foreign "puts" forall . String -> Unit
 
 let () = iter puts (Cons "1\n" (Cons "2\n" (Cons "3\n" Nil)))
-                    |}
+|}
 
 let records_program = {|
+(* Emmeline features records with
+   polymorphic fields *)
+
+(* Endofunctor *)
 type Functor f = {
   map : forall a b. (a -> b) -> f a -> f b
 }
@@ -119,11 +125,10 @@ let () =
                 let program = textarea##.value in
                 let bytestr = Js.to_bytestring program in
                 Lexing.from_string bytestr
-                |> Pipeline.compile_source_ssa
-                     (Hashtbl.create (module Qual_id.Prefix))
-                     main_prefix
+                |> Pipeline.compile_source
+                     (Hashtbl.create (module Qual_id.Prefix)) main_prefix
               with
-              | Ok (_, asm_module) ->
+              | Ok asm_module ->
                  Caml.print_endline "OK!";
                  set_console_text "";
                  let vm =

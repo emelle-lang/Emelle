@@ -10,6 +10,10 @@ let parse_handling_errs lexbuf =
   let supplier = I.lexer_lexbuf_to_supplier Lexer.expr lexbuf in
   I.loop_handle succeed fail supplier
 
+let parse_expr lexbuf =
+  parse_handling_errs lexbuf
+    (Parser.Incremental.expr_eof lexbuf.Lexing.lex_curr_p)
+
 let parse_file lexbuf =
   parse_handling_errs lexbuf
     (Parser.Incremental.file lexbuf.Lexing.lex_curr_p)

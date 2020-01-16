@@ -1,7 +1,11 @@
+(* Typeclasses can be achieved using records *)
+
+(* Endofunctor *)
 type Functor f = {
-  map : forall a b. (a -> b) -> f a -> f b
+  map : forall a b. (a -> b) -> f a -> f b; (* Polymorphic fields*)
 }
 
+(* Product type *)
 type Product a b = Pair a * b
 
 type Applicative f = {

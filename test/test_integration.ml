@@ -10,11 +10,6 @@ type phase =
 
 exception Fail of string * phase
 
-let optionally f x =
-  try Ok (f x) with
-  | Lexer.Error str -> Error (Message.Lexer_error str)
-  | Parser.Error -> Error Message.Parser_error
-
 let tests =
   [ "fun", Syntax
   ; "case", Syntax
@@ -76,9 +71,9 @@ let prefix = { Qual_id.Prefix.package = ""; path = [] }
 let test (input, phase) =
   let open Option.Monad_infix in
   let next =
-    test_phase (optionally (fun str ->
-                    Parser.expr_eof Lexer.expr (Lexing.from_string str)
-      )) Syntax input input phase
+    test_phase
+      (fun str -> Syntax_error.parse_expr (Lexing.from_string str))
+      Syntax input input phase
   in
   next >>= fun next ->
   let package = Package.create prefix in
@@ -469,7 +464,13 @@ let puts2 = fun x y ->
   puts y
 
 let _ = map2 opt_applicative puts2 (Some "Hello ") (Some "world!")
-     |}]
+     |}
+  ; {|
+(* Comment *)
+(* Nested (* Comment *) *)
+
+let () = ()
+    |} ]
 
 let std_prelude_prefix =
   { Qual_id.Prefix.package = "std"

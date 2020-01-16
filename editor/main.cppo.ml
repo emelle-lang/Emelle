@@ -72,6 +72,8 @@ let () =
                        let pp = Prettyprint.create () in
                        Prettyprint.print_error pp d.Message.error;
                        set_console_text (Prettyprint.to_string pp))
+                | Message.Lexer_error _ ->
+                   Caml.print_endline "Unreachable "
                 | Message.Unreachable str ->
                    Caml.print_endline ("Unreachable " ^ str);
               in

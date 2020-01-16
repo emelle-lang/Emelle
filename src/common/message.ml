@@ -12,7 +12,6 @@ type error =
   | Different_records of string * Qual_id.t * string * Qual_id.t
   | Escaping_rigid of Type.rigid_var
   | Kind_unification_fail of Kind.t * Kind.t
-  | Lexer_error of string
   | Mismatched_arity
   | Missing_field of string
   | Not_enough_fields
@@ -46,9 +45,14 @@ type 'a diagnostic = {
     error : error;
   }
 
+type lexer_error =
+  | Unclosed_comment
+  | Unclosed_string
+
 type 'a t =
   | And of 'a t * 'a t
   | Diagnostic of 'a diagnostic
+  | Lexer_error of Lexing.position * lexer_error
   | Unreachable of string
 
 let error loc error =

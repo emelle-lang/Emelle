@@ -197,6 +197,12 @@ let rec print_message f pp e =
   | Message.And(l, r) ->
      print_message f pp l;
      print_message f pp r
+  | Message.Lexer_error(pos, Message.Unclosed_comment) ->
+     print_pos pp pos;
+     Buffer.add_string pp.buffer ": Unclosed comment"
+  | Message.Lexer_error(pos, Message.Unclosed_string) ->
+     print_pos pp pos;
+     Buffer.add_string pp.buffer ": Unclosed string literal";
   | Message.Unreachable str ->
      Buffer.add_string pp.buffer str
   end

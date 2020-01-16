@@ -3,6 +3,8 @@
   open Parser
 
   exception Error of string
+  exception Unclosed_string of Lexing.position
+  exception Unclosed_comment of Lexing.position
 
   let lowercase_keywords =
     Hashtbl.of_alist_exn
@@ -40,6 +42,7 @@ let decimal = integer ('.' digit+)
 rule expr = parse
   | whitespace { expr lexbuf }
   | '\n' { Lexing.new_line lexbuf; expr lexbuf }
+  | "(*" { lex_comment (Lexing.lexeme_start_p lexbuf) lexbuf; expr lexbuf }
   | '{' { LBRACE }
   | '}' { RBRACE }
   | '(' { LPARENS }
@@ -69,21 +72,34 @@ rule expr = parse
     }
   | integer { INT_LIT (Int.of_string (Lexing.lexeme lexbuf)) }
   | decimal { FLOAT_LIT (Float.of_string (Lexing.lexeme lexbuf)) }
-  | '\"' { STRING_LIT (lex_string (Buffer.create 10) lexbuf) }
+  | '\"' {
+      STRING_LIT
+        (lex_string (Lexing.lexeme_start_p lexbuf) (Buffer.create 10) lexbuf)
+      }
   | eof { EOF }
   | _ { raise (Error (Lexing.lexeme lexbuf)) }
 
-and lex_string buffer = parse
+and lex_string startp buffer = parse
   | '\"' { Buffer.contents buffer }
-  | "\\\"" { Buffer.add_char buffer '\"'; lex_string buffer lexbuf }
-  | "\\\'" { Buffer.add_char buffer '\''; lex_string buffer lexbuf }
-  | "\\\\" { Buffer.add_char buffer '\\'; lex_string buffer lexbuf }
-  | "\\n" { Buffer.add_char buffer '\n'; lex_string buffer lexbuf }
-  | "\\t" { Buffer.add_char buffer '\t'; lex_string buffer lexbuf }
+  | "\\\"" { Buffer.add_char buffer '\"'; lex_string startp buffer lexbuf }
+  | "\\\'" { Buffer.add_char buffer '\''; lex_string startp buffer lexbuf }
+  | "\\\\" { Buffer.add_char buffer '\\'; lex_string startp buffer lexbuf }
+  | "\\n" { Buffer.add_char buffer '\n'; lex_string startp buffer lexbuf }
+  | "\\t" { Buffer.add_char buffer '\t'; lex_string startp buffer lexbuf }
   | [^ '\"' '\\' '\n' '\t']+ {
-      Buffer.add_string buffer (Lexing.lexeme lexbuf); lex_string buffer lexbuf
+      Buffer.add_string buffer (Lexing.lexeme lexbuf);
+      lex_string startp buffer lexbuf
     }
-  | _ { raise (Error (Lexing.lexeme lexbuf)) }
+  | _ { raise (Unclosed_string startp) }
+
+and lex_comment startp = parse
+  | "*)" { () }
+  | "(*" {
+      lex_comment (Lexing.lexeme_start_p lexbuf) lexbuf;
+      lex_comment startp lexbuf
+    }
+  | eof { raise (Unclosed_comment startp) }
+  | _ { lex_comment startp lexbuf }
 
 {
 }
