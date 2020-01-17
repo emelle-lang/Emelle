@@ -25,13 +25,8 @@ let newline pp =
     Buffer.add_string pp.buffer "  "
   done
 
-let print_prefix pp { Qual_id.Prefix.package; path } =
-  Buffer.add_string pp.buffer package;
-  Buffer.add_char pp.buffer '@';
-  List.iter path ~f:(fun part ->
-      Buffer.add_string pp.buffer part;
-      Buffer.add_char pp.buffer '.'
-    )
+let print_prefix pp { Qual_id.Prefix.package; _ } =
+  Buffer.add_string pp.buffer package
 
 let print_ident pp { Qual_id.prefix; name } =
   print_prefix pp prefix;
@@ -56,9 +51,7 @@ let with_necessary_parens f pp parent_prec prec =
 let print_wobbly pp wobbly =
   Buffer.add_char pp.buffer '_';
   Buffer.add_char pp.buffer 't';
-  Buffer.add_string pp.buffer (Int.to_string wobbly.Type.wobbly_id);
-  Buffer.add_char pp.buffer '@';
-  Buffer.add_string pp.buffer (Int.to_string wobbly.wobbly_lam_level)
+  Buffer.add_string pp.buffer (Int.to_string wobbly.Type.wobbly_id)
 
 let print_rigid pp rigid =
   Buffer.add_char pp.buffer 't';
@@ -126,19 +119,42 @@ let print_error pp = function
      print_ident pp id
   | Message.Kind_unification_fail _ ->
      Buffer.add_string pp.buffer "Kind unification fail"
+  | Message.Mismatched_arity ->
+     Buffer.add_string pp.buffer "The pattern lists do not have the same arity."
   | Message.Missing_field name ->
      Buffer.add_string pp.buffer "Missing field ";
      Buffer.add_string pp.buffer name
+  | Message.Not_enough_fields ->
+     Buffer.add_string pp.buffer
+       "This constructor pattern does not have enough fields."
   | Message.Occurs(wobbly, ty) ->
      Buffer.add_string pp.buffer "Occurs check: ";
      print_wobbly pp wobbly;
      Buffer.add_string pp.buffer " occurs in ";
      print_type pp (-1) ty
+  | Message.Redefined_constr name ->
+     Buffer.add_string pp.buffer "The constructor ";
+     Buffer.add_string pp.buffer name;
+     Buffer.add_string pp.buffer " has already been declared."
   | Message.Redefined_field_def name ->
      Buffer.add_string pp.buffer "Redefined field definition ";
      Buffer.add_string pp.buffer name
+  | Message.Redefined_field name ->
+     Buffer.add_string pp.buffer "The field ";
+     Buffer.add_string pp.buffer name;
+     Buffer.add_string pp.buffer " has already been defined."
+  | Message.Redefined_name name ->
+     Buffer.add_string pp.buffer "The name ";
+     Buffer.add_string pp.buffer name;
+     Buffer.add_string pp.buffer " has already been defined."
+  | Message.Redefined_typevar name ->
+     Buffer.add_string pp.buffer "The type variable ";
+     Buffer.add_string pp.buffer name;
+     Buffer.add_string pp.buffer " has already been declared."
   | Message.Syntax_error ->
      Buffer.add_string pp.buffer "Syntax error"
+  | Message.Too_many_fields ->
+     Buffer.add_string pp.buffer "This constructor pattern has too many fields."
   | Message.Type_unification_fail(t1, t2) ->
      Buffer.add_string pp.buffer "Type unification fail: ";
      print_type pp (-1) t1;
@@ -172,8 +188,14 @@ let print_error pp = function
   | Message.Unresolved_path path ->
      Buffer.add_string pp.buffer "Unresolved path ";
      print_path pp path
+  | Message.Unresolved_type path ->
+     Buffer.add_string pp.buffer "Unresolved type ";
+     print_ident pp path
+  | Message.Unresolved_typevar name ->
+     Buffer.add_string pp.buffer "Unbound type variable ";
+     Buffer.add_string pp.buffer name
   | Message.Unsafe_let_rec ->
-     Buffer.add_string pp.buffer "Unsafe let rec"
+     Buffer.add_string pp.buffer "This let rec definition is unsafe"
   | _ ->
      Buffer.add_string pp.buffer "other"
 
@@ -224,7 +246,7 @@ let print_lit pp = function
 let rec print_comma_sep f pp = function
   | [] -> ()
   | [x] -> f pp x
-  | x::xs ->
+  | x :: xs ->
      f pp x;
      Buffer.add_string pp.buffer ", ";
      print_comma_sep f pp xs

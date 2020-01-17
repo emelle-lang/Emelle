@@ -16,7 +16,6 @@ type error =
   | Missing_field of string
   | Not_enough_fields
   | Occurs of Type.wobbly_var * Type.t
-  | Parser_error
   | Redefined_constr of string
   | Redefined_field of string
   | Redefined_name of string
