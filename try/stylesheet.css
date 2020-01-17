@@ -1,3 +1,16 @@
+body {
+  font-family: sans-serif;
+}
+
+a {
+  color: #4090ff;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #2060ff;
+}
+
 .column {
   display: inline-block;
   float: left;
@@ -10,5 +23,6 @@
 }
 
 textarea {
+  font-family: monospace;
   resize: none;
 }

@@ -9,6 +9,13 @@
     <script src='main.bc.runtime.js'></script>
     <script src='main.bc.js'></script>
     <h1>Emmeline</h1>
+    <div>
+      Emmeline is a dialect from the ML family.
+      Explore its features by running the example programs in the editor below.
+      <a href='https://gitlab.com/emmeline/emmeline/'>
+        View the source code on GitLab.
+      </a>
+    </div>
     <div class='column'>
       <h2>Code</h2>
       <select name='examples' id="example-select">
@@ -16,6 +23,8 @@
         <option value='lists'>Lists</option>
         <option value='records'>Records</option>
         <option value='naturals'>Natural Numbers</option>
+        <option value='refs'>Reference Cells</option>
+        <option value='typed-holes'>Typed Holes</option>
       </select>
       <br/>
       <textarea id='editor' rows='40' cols='80' spellcheck='false'></textarea>
@@ -25,7 +34,7 @@
       </button>
     </div>
     <div class='column'>
-      <h2>Results</h2>
+      <h2>Output</h2>
       <textarea id='console' rows='40' cols='80'></textarea>
     </div>
   </body>

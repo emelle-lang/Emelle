@@ -107,7 +107,7 @@ let print_polytype pp (Type.Forall(tvars, ty)) =
       end;
       Buffer.add_char pp.buffer ' '
     );
-  Buffer.add_char pp.buffer '.';
+  Buffer.add_string pp.buffer ". ";
   print_type pp (-1) ty
 
 let get_relevant_bindings env tctx _ty =

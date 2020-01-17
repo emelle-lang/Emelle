@@ -105,6 +105,35 @@ let puts = foreign "puts" forall. String -> Unit
 let () = iter (fun () -> puts "X\n") five
 |}
 
+let refs_program = {|
+let refcell = Ref "Hello "
+
+let puts = foreign "puts" forall. String -> Unit
+
+let print_ref = fun (Ref s) ->
+  puts s
+
+let () =
+  print_ref refcell;
+  refcell := "world!";
+  print_ref refcell
+|}
+
+let typed_holes_program = {|
+(* A category whose objects are types and whose morphisms A -> B are terms
+   of type mor A B *)
+type Category mor = {
+  id: forall a. mor a a;
+  compose: forall a b c. (mor b c) -> (mor a b) -> (mor a c);
+}
+
+(* The category formed under function composition *)
+let category = {
+  id = (fun x -> x);
+  compose = (fun g f x -> ?);
+}
+|}
+
 let () =
   Dom_html.window##.onload :=
     Dom.handler (fun _ ->
@@ -180,6 +209,8 @@ let () =
               | 1 -> set_textarea_text list_program
               | 2 -> set_textarea_text records_program
               | 3 -> set_textarea_text naturals_program
+              | 4 -> set_textarea_text refs_program
+              | 5 -> set_textarea_text typed_holes_program
               | _ -> assert false
               end;
               Js._true

@@ -98,6 +98,7 @@ and lex_comment startp = parse
       lex_comment (Lexing.lexeme_start_p lexbuf) lexbuf;
       lex_comment startp lexbuf
     }
+  | '\n' { Lexing.new_line lexbuf; lex_comment startp lexbuf }
   | eof { raise (Unclosed_comment startp) }
   | _ { lex_comment startp lexbuf }
 
