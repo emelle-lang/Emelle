@@ -118,10 +118,18 @@ let get_relevant_bindings env tctx _ty =
       | Some ty -> (key, ty)::acc
     )
 
-let print_error pp = function
+let rec print_error pp = function
   | Message.Abstract_type id ->
      Buffer.add_string pp.buffer "Abstract type ";
      print_ident pp id
+  | Message.And_error(l, r) ->
+     print_error pp l;
+     Buffer.add_char pp.buffer '\n';
+     print_error pp r
+  | Message.Escaping_rigid rigid ->
+     Buffer.add_string pp.buffer "The rigid type variable ";
+     print_rigid pp rigid;
+     Buffer.add_string pp.buffer " will escape its cope.";
   | Message.Kind_unification_fail _ ->
      Buffer.add_string pp.buffer "Kind unification fail"
   | Message.Mismatched_arity ->
@@ -193,6 +201,9 @@ let print_error pp = function
   | Message.Unresolved_id id ->
      Buffer.add_string pp.buffer "Unresolved id ";
      print_ident pp id
+  | Message.Unresolved_name name ->
+     Buffer.add_string pp.buffer "Unresolved name ";
+     Buffer.add_string pp.buffer name
   | Message.Unresolved_path path ->
      Buffer.add_string pp.buffer "Unresolved path ";
      print_path pp path
