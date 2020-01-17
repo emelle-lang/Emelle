@@ -81,6 +81,30 @@ let puts2 = fun x y ->
 let _ = map2 opt_applicative puts2 (Some "Hello ") (Some "world!")
 |}
 
+let naturals_program = {|
+type Nat = Z | Suc Nat
+
+let two = Suc (Suc Z)
+let three = Suc two
+
+let rec iter = fun
+  | _ Z -> ()
+  | f (Suc n) ->
+    f ();
+    iter f n
+
+let rec add = fun
+  | Z n -> n
+  | (Suc m) n -> add m (Suc n)
+
+let five = add two three
+
+let puts = foreign "puts" forall. String -> Unit
+
+(* Count to five *)
+let () = iter (fun () -> puts "X\n") five
+|}
+
 let () =
   Dom_html.window##.onload :=
     Dom.handler (fun _ ->
@@ -155,6 +179,7 @@ let () =
               | 0 -> set_textarea_text hello_world_program
               | 1 -> set_textarea_text list_program
               | 2 -> set_textarea_text records_program
+              | 3 -> set_textarea_text naturals_program
               | _ -> assert false
               end;
               Js._true
