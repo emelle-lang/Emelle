@@ -25,8 +25,13 @@ let newline pp =
     Buffer.add_string pp.buffer "  "
   done
 
-let print_prefix pp { Qual_id.Prefix.package; _ } =
-  Buffer.add_string pp.buffer package
+let print_prefix pp { Qual_id.Prefix.package; path } =
+  Buffer.add_string pp.buffer package;
+  Buffer.add_string pp.buffer "::";
+  List.iter path ~f:(fun part ->
+      Buffer.add_string pp.buffer part;
+      Buffer.add_char pp.buffer '.'
+    )
 
 let print_ident pp { Qual_id.prefix; name } =
   print_prefix pp prefix;
@@ -176,6 +181,9 @@ let print_error pp = function
   | Message.Unimplemented msg ->
      Buffer.add_string pp.buffer "Unimplemented ";
      Buffer.add_string pp.buffer msg
+  | Message.Unknown_constr (_, name) ->
+     Buffer.add_string pp.buffer "Unknown constructor ";
+     Buffer.add_string pp.buffer name
   | Message.Unreachable_error str ->
      Buffer.add_string pp.buffer "Unreachable ";
      Buffer.add_string pp.buffer str
